@@ -90,7 +90,7 @@ public struct SystemEventsMirror: MirrorChannel {
                 return MirrorStatus(target: target, connected: true, mode: mode, changed: !found.selected)
             }
             var steps = opened.steps
-            _ = try await run(MirrorScript.clickRoute(found.name), steps: &steps, step: "click-route", debugAX: debugAX, debugFile: debugFile)
+            _ = try await run(MirrorScript.clickRoute(identifier: found.identifier, name: found.name), steps: &steps, step: "click-route", debugAX: debugAX, debugFile: debugFile)
             var points: [Point] = []
             if mode == MirrorMode.window {
                 points = try await clickWindowRoute()
@@ -122,7 +122,7 @@ public struct SystemEventsMirror: MirrorChannel {
                 return MirrorStatus(target: target, connected: false, changed: found.selected && dryRun)
             }
             var steps = opened.steps
-            _ = try await run(MirrorScript.clickRoute(found.name), steps: &steps, step: "click-route", debugAX: debugAX, debugFile: debugFile)
+            _ = try await run(MirrorScript.clickRoute(identifier: found.identifier, name: found.name), steps: &steps, step: "click-route", debugAX: debugAX, debugFile: debugFile)
             try await closePanel()
             return MirrorStatus(target: target, connected: false, changed: true)
         } catch {
@@ -211,7 +211,7 @@ public struct SystemEventsMirror: MirrorChannel {
                         debugFile: debugFile
                     )
                 }
-                let moduleLabel = module.description.isEmpty ? module.title : module.description
+                let moduleLabel = module.identifier.isEmpty ? (MirrorAX.meaningful(module.title) ?? MirrorAX.meaningful(module.description) ?? "") : ""
                 _ = try await run(
                     MirrorScript.clickModule(identifier: module.identifier, description: moduleLabel),
                     steps: &steps,

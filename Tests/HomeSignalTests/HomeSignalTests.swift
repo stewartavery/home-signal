@@ -163,7 +163,7 @@ final class HomeSignalTests: XCTestCase {
     }
 
     func testMirrorScriptClicksTheResolvedName() {
-        let script = MirrorScript.clickRoute("Example TV")
+        let script = MirrorScript.clickRoute(identifier: "", name: "Example TV")
         XCTAssertTrue(script.contains("\"Example TV\""))
         XCTAssertTrue(script.contains("dump-routes") == false)
         XCTAssertTrue(MirrorScript.dumpWindow().contains("dump-window"))

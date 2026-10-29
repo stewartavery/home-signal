@@ -66,37 +66,48 @@ public enum MirrorAX {
         return .notFound
     }
 
+    public static let screenMirroringModuleID = "controlcenter-screen-mirroring"
+
     public static func screenMirroringModule(_ records: [AXRecord]) -> AXRecord? {
-        let controls = records.filter { isControlRole($0.role) }
-        if let identified = controls.first(where: { isScreenMirroringIdentifier($0.identifier) }) {
-            return identified
+        if let exact = records.first(where: { $0.identifier == screenMirroringModuleID }) {
+            return exact
         }
-        return controls.first { isScreenMirroringLabel($0.label) }
+        return records.first { isScreenMirroringLabel($0.title) || isScreenMirroringLabel($0.description) }
     }
 
     public static func routes(_ records: [AXRecord]) -> [MirrorRoute] {
         var seen: [String] = []
         var routes: [MirrorRoute] = []
-        for record in records where isRouteRole(record.role) {
-            if isScreenMirroringIdentifier(record.identifier) || isScreenMirroringLabel(record.label) {
+        for record in records {
+            let ident = record.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            let folded = ident.lowercased()
+            if folded == screenMirroringModuleID || folded.hasPrefix("controlcenter-") || folded.hasSuffix("-header") {
                 continue
             }
-            let name = record.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { continue }
-            let key = normalize(name) + "\u{0}" + record.identifier
+            guard isRouteRole(record.role) || nameFromIdentifier(ident) != nil else { continue }
+            guard let name = displayName(record) else { continue }
+            let key = normalize(name) + "\u{0}" + ident
             guard !seen.contains(key) else { continue }
             seen.append(key)
-            routes.append(MirrorRoute(name: name, identifier: record.identifier, selected: isOn(record.value)))
+            routes.append(MirrorRoute(name: name, identifier: ident, selected: isOn(record.value)))
         }
         return routes
+    }
+
+    public static func displayName(_ record: AXRecord) -> String? {
+        if let title = meaningful(record.title) { return title }
+        if let description = meaningful(record.description) { return description }
+        if let value = meaningful(record.value), !isStateToken(value) { return value }
+        return nameFromIdentifier(record.identifier)
     }
 
     public static func labels(_ records: [AXRecord]) -> [String] {
         var names: [String] = []
         for record in records {
-            let name = record.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, !names.contains(name) else { continue }
-            names.append(name)
+            let name = displayName(record) ?? record.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, meaningful(name) != nil || !record.identifier.isEmpty, !names.contains(name) else { continue }
+            if meaningful(name) == nil, record.identifier.isEmpty { continue }
+            if !names.contains(name) { names.append(name) }
         }
         return names
     }
@@ -172,9 +183,39 @@ public enum MirrorAX {
         return text == "screen mirroring" || text.contains("screen mirroring")
     }
 
-    public static func isScreenMirroringIdentifier(_ raw: String) -> Bool {
-        let text = raw.lowercased().replacingOccurrences(of: "_", with: "-")
-        return text.contains("screen-mirroring") || text.contains("screenmirroring")
+    public static func meaningful(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let folded = normalize(trimmed)
+        let generic: Set<String> = [
+            "toggle button", "button", "checkbox", "check box", "radio button", "radio",
+            "menu button", "pop up button", "group", "missing", "image", "text", "static text",
+        ]
+        guard !generic.contains(folded) else { return nil }
+        return trimmed
+    }
+
+    public static func nameFromIdentifier(_ identifier: String) -> String? {
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folded = trimmed.lowercased()
+        let modulePrefix = "screen-mirroring-"
+        if folded.isEmpty || folded == screenMirroringModuleID || folded.hasSuffix("-header") || !folded.hasPrefix(modulePrefix) {
+            return nil
+        }
+        let rest = String(trimmed.dropFirst(modulePrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if rest.isEmpty || normalize(rest) == "header" { return nil }
+        if let dash = rest.firstIndex(of: "-") {
+            let kind = rest[..<dash]
+            let name = rest[rest.index(after: dash)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            let kindIsSlug = !kind.isEmpty && kind.unicodeScalars.allSatisfy { scalar in
+                (scalar.value >= 97 && scalar.value <= 122) || (scalar.value >= 48 && scalar.value <= 57)
+            }
+            if kindIsSlug {
+                if name.isEmpty || normalize(name) == "header" { return nil }
+                return String(name)
+            }
+        }
+        return rest
     }
 
     private static func isControlRole(_ role: String) -> Bool {
@@ -188,8 +229,13 @@ public enum MirrorAX {
     }
 
     private static func isOn(_ value: String) -> Bool {
-        let text = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let text = normalize(value)
         return text == "1" || text == "true" || text == "on" || text == "yes"
+    }
+
+    private static func isStateToken(_ value: String) -> Bool {
+        let text = normalize(value)
+        return text == "0" || text == "1" || text == "true" || text == "false" || text == "on" || text == "off" || text == "yes" || text == "no" || text == "missing value"
     }
 
     private static func withoutCopySuffix(_ normalized: String) -> String {

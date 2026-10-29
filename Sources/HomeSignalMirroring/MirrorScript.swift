@@ -76,6 +76,15 @@ public enum MirrorScript {
       if (roleName contains "check box") then return true
       return false
     end controlRole
+    on genericLabel(t)
+      if t is "" then return true
+      if t is "toggle button" then return true
+      if t is "button" then return true
+      if t is "checkbox" then return true
+      if t is "check box" then return true
+      if t is "missing" then return true
+      return false
+    end genericLabel
     """
 
     public static func dumpMenuBar() -> String {
@@ -161,10 +170,18 @@ public enum MirrorScript {
                 set n to my safeProp(el, "name")
                 set roleName to my safeProp(el, "role")
                 if my controlRole(roleName) then
-                  if ((wantedID is not "") and (ident is wantedID)) or ((wantedDesc is not "") and ((d is wantedDesc) or (n is wantedDesc))) then
-                    click el
-                    set clicked to true
-                    exit repeat
+                  if wantedID is not "" then
+                    if ident is wantedID then
+                      click el
+                      set clicked to true
+                      exit repeat
+                    end if
+                  else if (my genericLabel(wantedDesc)) is false then
+                    if (d is wantedDesc) or (n is wantedDesc) then
+                      click el
+                      set clicked to true
+                      exit repeat
+                    end if
                   end if
                 end if
               end repeat
@@ -205,13 +222,15 @@ public enum MirrorScript {
         """
     }
 
-    public static func clickRoute(_ name: String) -> String {
-        let wanted = appleString(name)
+    public static func clickRoute(identifier: String, name: String) -> String {
+        let wantedID = appleString(identifier)
+        let wantedName = appleString(name)
         return library + """
 
         on run
           set mirrorAction to "click-route"
-          set wanted to \(wanted)
+          set wantedID to \(wantedID)
+          set wantedName to \(wantedName)
           set clicked to false
           tell application "System Events"
             tell process "ControlCenter"
@@ -219,12 +238,24 @@ public enum MirrorScript {
                 try
                   set bits to entire contents of w
                   repeat with el in bits
-                    set d to my safeProp(el, "desc")
-                    set n to my safeProp(el, "name")
-                    if (d is wanted) or (n is wanted) then
-                      click el
-                      set clicked to true
-                      exit repeat
+                    set ident to my safeAttr(el, "AXIdentifier")
+                    set roleName to my safeProp(el, "role")
+                    if my controlRole(roleName) then
+                      if wantedID is not "" then
+                        if ident is wantedID then
+                          click el
+                          set clicked to true
+                          exit repeat
+                        end if
+                      else if (my genericLabel(wantedName)) is false then
+                        set d to my safeProp(el, "desc")
+                        set n to my safeProp(el, "name")
+                        if (d is wantedName) or (n is wantedName) then
+                          click el
+                          set clicked to true
+                          exit repeat
+                        end if
+                      end if
                     end if
                   end repeat
                 end try
@@ -233,7 +264,7 @@ public enum MirrorScript {
             end tell
           end tell
           if clicked then return "clicked"
-          error "AirPlay target not found: " & wanted
+          error "AirPlay target not found: " & wantedName
         end run
         """
     }
@@ -269,8 +300,8 @@ public enum MirrorScript {
             clickMenuBar("Example's \"TV\""),
             clickModule(identifier: "controlcenter-screen-mirroring", description: "Screen Mirroring"),
             clickModule(identifier: "id'1", description: "Example's \"TV\" (2)"),
-            clickRoute("Example TV"),
-            clickRoute("Example's \"TV\" (2)"),
+            clickRoute(identifier: "screen-mirroring-device-Example TV", name: "Example TV"),
+            clickRoute(identifier: "", name: "Example's \"TV\" (2)"),
             panelBounds(),
             closePanel(),
         ]

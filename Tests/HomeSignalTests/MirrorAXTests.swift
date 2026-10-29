@@ -43,15 +43,15 @@ final class MirrorAXTests: XCTestCase {
     }
 
     func testModuleMatchesIdentifierOrDescription() {
-        let records = MirrorAX.parse(lines([
-            ax(role: "button", identifier: "controlcenter-wifi", title: "Wi-Fi", description: "Wi-Fi"),
-            ax(role: "button", identifier: "controlcenter-screen-mirroring", title: "", description: "Screen Mirroring"),
-        ]))
+        let records = MirrorAX.parse(lines(controlCenterModules()))
         XCTAssertEqual(MirrorAX.screenMirroringModule(records)?.identifier, "controlcenter-screen-mirroring")
+        let withoutModule = records.filter { $0.identifier != "controlcenter-screen-mirroring" }
+        XCTAssertNil(MirrorAX.screenMirroringModule(withoutModule))
         let byLabel = MirrorAX.parse(lines([
-            ax(role: "checkbox", identifier: "", title: "Screen Mirroring", description: "Screen Mirroring"),
+            ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-wifi", description: "toggle button"),
+            ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "module-fallback", title: "Screen Mirroring", description: "toggle button"),
         ]))
-        XCTAssertEqual(MirrorAX.screenMirroringModule(byLabel)?.title, "Screen Mirroring")
+        XCTAssertEqual(MirrorAX.screenMirroringModule(byLabel)?.identifier, "module-fallback")
     }
 
     func testRoutesSkipTheModuleAndKeepDeviceRows() {
@@ -64,6 +64,31 @@ final class MirrorAXTests: XCTestCase {
         XCTAssertEqual(routes.map(\.name), ["Example TV", "Example Speaker"])
         XCTAssertFalse(routes[0].selected)
         XCTAssertTrue(routes[1].selected)
+    }
+
+    func testRouteNamesComeFromIdentifierWhenLabelsAreGeneric() {
+        let records = MirrorAX.parse(lines(controlCenterModules() + screenMirroringRoutes()))
+        let routes = MirrorAX.routes(records)
+        XCTAssertEqual(routes.map(\.name), ["Example TV", "Example Speaker"])
+        XCTAssertEqual(routes.map(\.identifier), [
+            "screen-mirroring-device-Example TV",
+            "screen-mirroring-receiver-Example Speaker",
+        ])
+        XCTAssertEqual(routes.map(\.selected), [false, true])
+        XCTAssertFalse(routes.contains { $0.name == "toggle button" || $0.name == "button" })
+        XCTAssertEqual(MirrorAX.find(target: "Example TV", deviceID: "", in: routes)?.identifier, "screen-mirroring-device-Example TV")
+        let labels = MirrorAX.labels(records)
+        XCTAssertFalse(labels.contains("toggle button"))
+        XCTAssertFalse(labels.contains("button"))
+        let dump = MirrorAX.format(records)
+        XCTAssertTrue(dump.contains("id=controlcenter-screen-mirroring"))
+        XCTAssertTrue(dump.contains("id=screen-mirroring-device-Example TV"))
+        XCTAssertEqual(
+            MirrorAX.nameFromIdentifier("screen-mirroring-audio-Example Panel"),
+            "Example Panel"
+        )
+        XCTAssertNil(MirrorAX.nameFromIdentifier("screen-mirroring-header"))
+        XCTAssertNil(MirrorAX.nameFromIdentifier("wifi-network-ExampleNet"))
     }
 
     func testPermissionErrorDetectsTheControlCenterWindowFailure() {
@@ -99,13 +124,15 @@ final class MirrorAXTests: XCTestCase {
     }
 
     func testControlCenterPathReadsRoutesAndClicksTheMatchedRow() async throws {
+        let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("hs-ax-\(UUID().uuidString).txt").path
+        defer { try? FileManager.default.removeItem(atPath: debugFile) }
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
-            ok(axLine(role: "button", identifier: "controlcenter-screen-mirroring", description: "Screen Mirroring")),
+            ok(lines(controlCenterModules())),
             ok("clicked"),
             ok(""),
-            ok(axLine(role: "checkbox", description: "Example TV (2)", value: "0")),
+            ok(lines(screenMirroringRoutes())),
             ok("clicked"),
         ])
         let mirror = SystemEventsMirror(
@@ -115,12 +142,43 @@ final class MirrorAXTests: XCTestCase {
             clicker: { _ in },
             sleeper: ImmediateSleeper()
         )
-        let status = try await mirror.connect(target: "Example TV", mode: "display", deviceID: "", dryRun: false, debugAX: true, debugFile: nil)
+        let status = try await mirror.connect(target: "Example TV", mode: "display", deviceID: "", dryRun: false, debugAX: true, debugFile: debugFile)
         XCTAssertTrue(status.connected)
         XCTAssertTrue(status.changed)
-        XCTAssertTrue(runner.scripts.contains { $0.contains("dump-menubar") })
-        XCTAssertTrue(runner.scripts.contains { $0.contains("click-module") })
-        XCTAssertTrue(runner.scripts.contains { $0.contains("Example TV (2)") })
+        let moduleClick = runner.scripts.first { $0.contains("click-module") }
+        XCTAssertTrue(moduleClick?.contains("set wantedID to \"controlcenter-screen-mirroring\"") == true)
+        XCTAssertTrue(moduleClick?.contains("set wantedDesc to \"\"") == true)
+        XCTAssertFalse(moduleClick?.contains("controlcenter-wifi") == true)
+        let routeClick = runner.scripts.first { $0.contains("click-route") }
+        XCTAssertTrue(routeClick?.contains("set wantedID to \"screen-mirroring-device-Example TV\"") == true)
+        XCTAssertTrue(routeClick?.contains("set wantedName to \"Example TV\"") == true)
+        XCTAssertFalse(routeClick?.contains("set wantedName to \"toggle button\"") == true)
+        XCTAssertFalse(routeClick?.contains("set wantedID to \"wifi-network-ExampleNet\"") == true)
+        let saved = try String(contentsOfFile: debugFile, encoding: .utf8)
+        XCTAssertTrue(saved.contains("id=controlcenter-screen-mirroring"))
+        XCTAssertTrue(saved.contains("id=screen-mirroring-device-Example TV"))
+        XCTAssertTrue(saved.contains("[routes]"))
+    }
+
+    func testMirrorListOmitsGenericControlLabels() async throws {
+        let runner = QueueRunner(outputs: [
+            ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
+            ok("clicked"),
+            ok(lines(controlCenterModules())),
+            ok("clicked"),
+            ok(lines(screenMirroringRoutes())),
+        ])
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper()
+        )
+        let listed = try await mirror.list(discover: false, debugAX: false, debugFile: nil)
+        XCTAssertEqual(listed.controlCenter, ["Example TV", "Example Speaker"])
+        XCTAssertFalse(listed.controlCenter.contains("toggle button"))
+        XCTAssertFalse(listed.controlCenter.contains("button"))
     }
 
     func testMissingAutomationIsAPermissionError() async throws {
@@ -216,12 +274,53 @@ final class MirrorAXTests: XCTestCase {
     }
 }
 
-private func ax(role: String, identifier: String = "", title: String = "", description: String = "", value: String = "") -> String {
-    axLine(role: role, identifier: identifier, title: title, description: description, value: value)
+private func controlCenterModules() -> [String] {
+    [
+        ax(role: "AXWindow", subrole: "AXSystemDialog", title: "Control Center"),
+        ax(role: "AXGroup", subrole: "AXHostingView", depth: 2),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-wifi", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-bluetooth", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-airdrop", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-focus-modes", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-display", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-airplay", description: "toggle button", depth: 3),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "controlcenter-screen-mirroring", description: "toggle button", depth: 3),
+        ax(role: "AXButton", description: "button", depth: 3),
+    ]
 }
 
-private func axLine(role: String, identifier: String = "", title: String = "", description: String = "", value: String = "") -> String {
-    "1\t\(role)\t\t\(identifier)\t\(title)\t\(description)\t\(value)\n"
+private func screenMirroringRoutes() -> [String] {
+    [
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "screen-mirroring-header", description: "toggle button"),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "screen-mirroring-device-Example TV", description: "toggle button", value: "0"),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "screen-mirroring-receiver-Example Speaker", description: "toggle button", value: "1"),
+        ax(role: "AXCheckBox", subrole: "AXToggle", identifier: "wifi-network-ExampleNet", description: "toggle button", value: "0"),
+        ax(role: "AXButton", description: "button"),
+    ]
+}
+
+private func ax(
+    role: String,
+    subrole: String = "",
+    identifier: String = "",
+    title: String = "",
+    description: String = "",
+    value: String = "",
+    depth: Int = 1
+) -> String {
+    axLine(role: role, subrole: subrole, identifier: identifier, title: title, description: description, value: value, depth: depth)
+}
+
+private func axLine(
+    role: String,
+    subrole: String = "",
+    identifier: String = "",
+    title: String = "",
+    description: String = "",
+    value: String = "",
+    depth: Int = 1
+) -> String {
+    "\(depth)\t\(role)\t\(subrole)\t\(identifier)\t\(title)\t\(description)\t\(value)\n"
 }
 
 private func lines(_ rows: [String]) -> String {
