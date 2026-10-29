@@ -147,6 +147,7 @@ private func makeCapture(simulate: Bool) -> any CaptureChannel {
 import AppKit
 
 @main
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
 

@@ -108,6 +108,8 @@ home-signal screenshot --display main --out /tmp/signal.png
 
 `display layout` takes a JSON spec and paints it on a fixed 16:9 canvas. Modules are equal rows. Adding or removing one resizes the rest, so the canvas stays full. Pass `--file` or `--spec`, not both. `--theme` overrides the spec. Built-in themes are `default` (neutral) and `moonlit-autumn`. Omit `theme` to use `default`. An unknown theme, unknown module, or blank field is an error.
 
+Screenshots, the command flow, the module catalog, and the token scale are in [docs/display-layout.md](docs/display-layout.md).
+
 The stage padding is the `xl` space token. Module rows use a grid with `gap: var(--space-l)` and `grid-auto-rows: minmax(0, 1fr)`. Each block is a flex column with `flex: 1`. A `columns` module lays its sections on a grid with the same gap. Text starts at a type token and steps down that scale when it would overflow.
 
 Type tokens use a 1.5 ratio between steps. `xl` is 8vh and `xxl` is 12vh (1.5 times `xl`).
