@@ -35,7 +35,7 @@ The canvas is 16:9. Module rows use `gap: var(--space-l)` and `grid-auto-rows: m
 
 Type tokens, vh, 1.5 ratio between steps (`xl` is 8vh, `xxl` is 12vh): `--type-xs` 1.6vh, `--type-s` 2.4vh, `--type-m` 3.6vh, `--type-l` 5.4vh, `--type-xl` 8vh, `--type-xxl` 12vh. Space tokens: `--space-xs` 0.8vh, `--space-s` 1.6vh, `--space-m` 2.4vh, `--space-l` 4vh (grid gap), `--space-xl` 6vh (page margin).
 
-Required fields: header `title`; message `text`; columns `columns[].items`; list `items`; summary `label` and `value`; alert `text`. Items are `{ "leading", "text" }` or a string. Optional `size` is a type token. Alert `level` is `info`, `warning`, or `critical`.
+Required fields: header `title`; message `text`; columns `columns[].items`; list `items`; summary `label` and `value`; alert `text`; html `html`; image and video `src`. Items are `{ "leading", "text" }` or a string. Optional `size` is a type token. Alert `level` is `info`, `warning`, or `critical`. Image and video `fit` is `contain` (default) or `cover`. Video `autoplay`, `muted`, and `loop` default to true; set a flag to false to override it. Empty `html` or `src` is an error. `html` is shown unchanged inside its slot. A local image or video path is embedded as a data URL; `http`, `https`, and `data` URLs are used as given.
 
 One-line reminder:
 
@@ -91,6 +91,20 @@ Multi-section schedule:
     }
   ]
 }
+```
+
+`html`, `image`, and `video` fill a grid slot like any other block (`flex: 1`, same gap and margin). Content stays inside the slot.
+
+```json
+{ "type": "html", "html": "<p>Example notice</p>" }
+```
+
+```json
+{ "type": "image", "src": "https://example.com/example.png", "fit": "contain", "caption": "Example" }
+```
+
+```json
+{ "type": "video", "src": "https://example.com/example.mp4", "fit": "cover", "autoplay": true, "muted": true, "loop": true }
 ```
 
 Themes are color and font only (`DisplayThemes.all`). Add a module in `DisplayModuleKind`, the spec parser, and `DisplayModuleHTML`. Do not put colors in the layout CSS.

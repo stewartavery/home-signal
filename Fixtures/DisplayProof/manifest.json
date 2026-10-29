@@ -2,7 +2,7 @@
   "algorithm" : "sha256",
   "fixtures" : [
     {
-      "contentHash" : "7d70016b55a823d7ebf7ccff7221c9dc309f86571d57553e7f5cd9addb27af0f",
+      "contentHash" : "3034fdfe44baa82b28acdeecebd547ce5f64f767952b3393ce2a447c0c670839",
       "file" : "message-default.html",
       "modules" : 1,
       "name" : "message-default",
@@ -12,7 +12,7 @@
       "title" : "Reminder"
     },
     {
-      "contentHash" : "367d1e300eee5771e6387fe8c19eaffa2e343d47e9c542a2c500e4909cd2230d",
+      "contentHash" : "93bbb30c234c4cfca2b97475aa9d3c4fc691407776af04e2ca09a90d60d6238a",
       "file" : "message-moonlit.html",
       "modules" : 1,
       "name" : "message-moonlit",
@@ -22,7 +22,7 @@
       "title" : "Reminder"
     },
     {
-      "contentHash" : "c1a4755b03aff85435ed0b510864e2f7ec0246ffe38e42052e8b051626a79abb",
+      "contentHash" : "c6f829bae2bc3da5f8dde56d8630a870d1a8e2a23330052eb4ee45a5e5198ced",
       "file" : "schedule-default.html",
       "modules" : 3,
       "name" : "schedule-default",
@@ -32,7 +32,7 @@
       "title" : "Example day"
     },
     {
-      "contentHash" : "fecd30c54d11682d584df79b12aecaf81e8d2309ecf6d2fa48b9c943d2344812",
+      "contentHash" : "eef9c3ee498a90d9e0d62dba81c221c561a3a53cc26c7a1ec3589fbf257b5f01",
       "file" : "schedule-moonlit.html",
       "modules" : 3,
       "name" : "schedule-moonlit",
@@ -42,7 +42,7 @@
       "title" : "Example day"
     },
     {
-      "contentHash" : "fb9fc61cc0c2e3db89163cdc08f8c1a07ae04efb9d909a2e0d7c7f97ece229de",
+      "contentHash" : "5121fca3c4a753a64725a650d38053a1ad6b684c33072481d25ee3d30a42f2d0",
       "file" : "pair-default.html",
       "modules" : 2,
       "name" : "pair-default",
@@ -52,7 +52,7 @@
       "title" : "Pair"
     },
     {
-      "contentHash" : "f82dd70cc08736aa9143e39c758105999f03f822f7fd1e70114b50879ce5121d",
+      "contentHash" : "0993b9f11b75d69a4ef8f9146ddd476503f725e686698d1668612d9781f1a7d0",
       "file" : "quad-default.html",
       "modules" : 4,
       "name" : "quad-default",
@@ -62,7 +62,7 @@
       "title" : "Four modules"
     },
     {
-      "contentHash" : "f3d77497811ee6d84667869bc33dd2fa2fbdc93c3425bcb69b04f71a016be930",
+      "contentHash" : "f5e3023870c2eaf242919b98e057398212d226a433e57f23d4b56c81de995199",
       "file" : "quad-moonlit.html",
       "modules" : 4,
       "name" : "quad-moonlit",
@@ -72,7 +72,7 @@
       "title" : "Four modules"
     },
     {
-      "contentHash" : "7f36848aff62b3cfb4c581d7e73e8e46ded71cebbd0d32fc5269f8604b155827",
+      "contentHash" : "090459d7c269bb631c71db1bf7af2abf48735aee8560fbae6cd5b2ea58fd6771",
       "file" : "overflow-message.html",
       "modules" : 1,
       "name" : "overflow-message",
@@ -82,7 +82,7 @@
       "title" : "Overflow"
     },
     {
-      "contentHash" : "9a684bae4e403da9bfcb3511c50572e93507fd33151422397844b152d7d4dd88",
+      "contentHash" : "497fb8de1a2d4a772dac292cafb988f2dc14da4ced390a3b52b57f14ad2e66d8",
       "file" : "overflow-list.html",
       "modules" : 1,
       "name" : "overflow-list",
@@ -92,7 +92,7 @@
       "title" : "Overflow list"
     },
     {
-      "contentHash" : "62a8e5870086a213a170811692eece1e6da193a582a3d918461b77bd533f891c",
+      "contentHash" : "943973016d885746a16d853236bd22f2de8a8961de65e0c6cbc3b9b19aaeba52",
       "file" : "alerts-default.html",
       "modules" : 3,
       "name" : "alerts-default",
@@ -102,7 +102,7 @@
       "title" : "Notices"
     },
     {
-      "contentHash" : "8b3fe243060d9ac2bceb96f0b05163422245f35e5909e8e4c045edc5d36b2751",
+      "contentHash" : "3bb6970be52415a6d78e8feabf3791aba1f900a1d4dd8365bc44f27542bf4469",
       "file" : "columns-moonlit.html",
       "modules" : 1,
       "name" : "columns-moonlit",
@@ -112,7 +112,7 @@
       "title" : "Columns"
     },
     {
-      "contentHash" : "fc025ae0efe1b09c0cd02863e0a01f5f57cc70849e6e674b8c09b7ee58f9e7ae",
+      "contentHash" : "d9fcb959f5ac408918e008d4a98c42b0c83f5745fad14066324781b6a9a1b1b3",
       "file" : "grid-outline.html",
       "modules" : 4,
       "name" : "grid-outline",

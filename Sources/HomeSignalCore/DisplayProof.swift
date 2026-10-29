@@ -64,7 +64,7 @@ public enum DisplayProof {
         let theme = try DisplayThemes.named(page.themeID)
         var proofTheme = theme
         proofTheme.fontFamily = fontFamily(for: theme.fontFamily)
-        return DisplayLayout.render(page: page, theme: proofTheme, proofCSS: try proofCSS(outline: outline))
+        return try DisplayLayout.render(page: page, theme: proofTheme, proofCSS: try proofCSS(outline: outline))
     }
 
     public static func exportCatalog(in directory: URL) throws -> DisplayProofManifest {

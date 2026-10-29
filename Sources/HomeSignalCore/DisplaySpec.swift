@@ -7,6 +7,9 @@ public enum DisplayModuleKind: String, CaseIterable, Sendable {
     case list
     case summary
     case alert
+    case html
+    case image
+    case video
 }
 
 public enum DisplayAlertLevel: String, CaseIterable, Sendable {
@@ -42,6 +45,16 @@ public enum DisplayBlock: Sendable, Equatable {
     case list(title: String? = nil, items: [DisplayRow], size: DisplayTypeToken = .m)
     case summary(label: String, value: String, detail: String? = nil, size: DisplayTypeToken = .xl)
     case alert(title: String? = nil, text: String, level: DisplayAlertLevel = .info, size: DisplayTypeToken = .l)
+    case html(html: String)
+    case image(src: String, fit: DisplayMediaFit = .contain, caption: String? = nil)
+    case video(
+        src: String,
+        fit: DisplayMediaFit = .contain,
+        caption: String? = nil,
+        autoplay: Bool = true,
+        muted: Bool = true,
+        loop: Bool = true
+    )
 
     func validated() throws -> DisplayBlock {
         switch self {
@@ -76,6 +89,22 @@ public enum DisplayBlock: Sendable, Equatable {
             )
         case .alert(let title, let text, let level, let size):
             return .alert(title: optional(title), text: try required(text, "An alert module needs text."), level: level, size: size)
+        case .html(let html):
+            guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("An html module needs html.")
+            }
+            return .html(html: html)
+        case .image(let src, let fit, let caption):
+            return .image(src: try required(src, "An image module needs a src."), fit: fit, caption: optional(caption))
+        case .video(let src, let fit, let caption, let autoplay, let muted, let loop):
+            return .video(
+                src: try required(src, "A video module needs a src."),
+                fit: fit,
+                caption: optional(caption),
+                autoplay: autoplay,
+                muted: muted,
+                loop: loop
+            )
         }
     }
 }
@@ -140,6 +169,13 @@ struct LayoutModuleDTO: Decodable {
     var level: String?
     var items: [LayoutItemDTO]?
     var columns: [LayoutColumnDTO]?
+    var html: String?
+    var src: String?
+    var fit: String?
+    var caption: String?
+    var autoplay: Bool?
+    var muted: Bool?
+    var loop: Bool?
 }
 
 struct LayoutColumnDTO: Decodable {
@@ -214,6 +250,26 @@ enum LayoutModuleParser {
             let text = try field(dto.text, index: index, kind: kindName, name: "text")
             let level = try parseLevel(dto.level, index: index)
             return .alert(title: optional(dto.title), text: text, level: level, size: size ?? .l)
+        case .html:
+            guard let html = dto.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("Module \(index) (html) needs html.")
+            }
+            return .html(html: html)
+        case .image:
+            let src = try field(dto.src, index: index, kind: kindName, name: "src")
+            let fit = try parseFit(dto.fit, index: index, kind: kindName)
+            return .image(src: src, fit: fit, caption: optional(dto.caption))
+        case .video:
+            let src = try field(dto.src, index: index, kind: kindName, name: "src")
+            let fit = try parseFit(dto.fit, index: index, kind: kindName)
+            return .video(
+                src: src,
+                fit: fit,
+                caption: optional(dto.caption),
+                autoplay: dto.autoplay ?? true,
+                muted: dto.muted ?? true,
+                loop: dto.loop ?? true
+            )
         }
     }
 
@@ -248,6 +304,18 @@ enum LayoutModuleParser {
             throw HomeSignalError.displayRefusal("Module \(index) (\(kind)) has an unknown size \"\(name)\".")
         }
         return token
+    }
+
+    private static func parseFit(_ raw: String?, index: Int, kind: String) throws -> DisplayMediaFit {
+        guard let raw else { return .contain }
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !name.isEmpty else {
+            throw HomeSignalError.displayRefusal("Module \(index) (\(kind)) has an empty fit.")
+        }
+        guard let fit = DisplayMediaFit(rawValue: name) else {
+            throw HomeSignalError.displayRefusal("Module \(index) (\(kind)) has an unknown fit \"\(name)\".")
+        }
+        return fit
     }
 
     private static func parseLevel(_ raw: String?, index: Int) throws -> DisplayAlertLevel {
