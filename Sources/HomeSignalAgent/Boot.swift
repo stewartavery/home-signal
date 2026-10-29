@@ -154,7 +154,7 @@ private func makeMirror(_ config: HomeSignalConfig, displays: [DisplayBounds], i
             _ = try await input.click(at: point, button: "left", clicks: 1, dryRun: false)
         }
     )
-    return FallbackMirror(primary: UnavailableNativeMirror(), fallback: system)
+    return AdaptiveMirror(routing: MediaRoutingMirror(probe: RuntimeMediaRoutes()), interface: system, locks: MacSessionLock())
     #else
     return UnavailableNativeMirror()
     #endif

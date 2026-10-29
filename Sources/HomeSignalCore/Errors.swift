@@ -72,6 +72,33 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         )
     }
 
+    public static func screenLocked(detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "screen_locked",
+            message: "The screen is locked, so Control Center cannot open.",
+            hint: detail,
+            exitCode: 6
+        )
+    }
+
+    public static func routingUnavailable(_ detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "routing_unavailable",
+            message: "The media routing backend is not available. \(detail)",
+            hint: "Control Center is the fallback when the screen is unlocked.",
+            exitCode: 6
+        )
+    }
+
+    public static func screenMirrorUnavailable(_ detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "screen_mirror_unavailable",
+            message: "Media routing can see AirPlay devices, but it has no screen-mirroring context. It can route playback audio and video, not the display mirror. \(detail)",
+            hint: "Unlock the screen to mirror through Control Center. --debug lists the classes and selectors that were found.",
+            exitCode: 6
+        )
+    }
+
     public static func permissionDenied(_ detail: String) -> HomeSignalError {
         HomeSignalError(
             code: "permission",

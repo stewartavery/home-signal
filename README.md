@@ -246,6 +246,19 @@ Video. `autoplay`, `muted`, and `loop` default to true:
 
 Screen Mirroring is opened from a top-level menu bar item when Control Center has one. Otherwise the agent opens the Control Center menu bar item and clicks the module whose accessibility identifier is `controlcenter-screen-mirroring`. A description of `toggle button` is not that module, and the first toggle is not used. After that click, the agent polls up to 8 seconds for at least one checkbox inside `screen-mirroring-device-list`. `screen-mirroring-preferences` is not a receiver. The row identifier looks like `screen-mirroring-device-AirPlay:<id>` and is not the receiver name. The name is read from the row's attributes and children (`AXTitle`, `AXLabel`, `AXAttributedDescription`, `AXHelp`, `AXValue`, `AXCustomContent`, and nested static text). If those are generic, names are paired with visible labels in row order. `missing value`, `toggle button`, and `button` are never names. The checkbox value is the connection state. Names are matched after Unicode normalization (apostrophes, NFC, case, and whitespace). An exact name wins over a copy such as `Example TV (2)`. If no name is exposed, the command exits with the row order and identifiers. `--debug-ax` prints every attribute on each row. If Accessibility or Automation is missing (`-1743`, `-25211`, `-10006`, or an assistive-access or authorization denial), the command exits 6 with code `permission`. A missing Control Center window (`-1719`, invalid index) is code `not_ready` and exits 7. The menu bar item toggles the panel, so the agent waits for the window and clicks again when the first click closed it. The panel is closed when the command finishes.
 
+`mirror list --backend auto` tries a non-UI media route first (`AVFoundation` / `MediaRemote`, loaded at runtime) and uses Control Center only when that route cannot answer and the screen is unlocked. `--backend routing` never opens Control Center. `--backend controlcenter` is the UI path. While the screen is locked, a command that would need Control Center exits 6 with code `screen_locked`. The media layer can list devices and, when a screen-mirroring context exists, connect the display. If the process only finds audio and video playback contexts, connect exits 6 with code `screen_mirror_unavailable` instead of pretending the display was mirrored. `--debug` prints the classes, selectors, and devices that were found.
+
+While the Mac is locked and still logged in:
+
+```bash
+home-signal --json mirror list --backend routing --debug
+home-signal --json mirror list --backend auto --debug
+home-signal --json mirror connect --backend routing --target "TV" --debug
+home-signal --json mirror list --backend controlcenter
+```
+
+The last command should fail with `screen_locked`. The routing list should not open Control Center.
+
 `mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Showing a page reconnects that target when its screen is not attached. A second show does not reconnect while the screen is still attached.
 
 `--dry-run` on `mirror connect` still opens Control Center to read the checkbox. It does not click the target or the window-mode points.

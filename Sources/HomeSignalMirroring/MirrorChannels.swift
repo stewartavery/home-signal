@@ -156,12 +156,13 @@ public struct SystemEventsMirror: MirrorChannel {
         _ = discover
         return try await finishing {
             let opened = try await openRoutes(debugAX: debugAX, debugFile: debugFile, leaveOpen: false)
-            return MirrorListResult(
-                controlCenter: opened.routes.map(\.name),
-                discovered: [],
-                routes: opened.routes,
-                accessibility: debugAX ? opened.steps : []
-            )
+        return MirrorListResult(
+            controlCenter: opened.routes.map(\.name),
+            discovered: [],
+            routes: opened.routes,
+            accessibility: debugAX ? opened.steps : [],
+            source: "controlcenter"
+        )
         }
     }
 

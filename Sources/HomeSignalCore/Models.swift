@@ -422,16 +422,24 @@ public struct MirrorListResult: Sendable, Equatable, Codable {
     public var discovered: [String]
     public var routes: [MirrorRoute]
     public var accessibility: [MirrorAXStep]
+    public var source: String?
+    public var routingDebug: String?
 
-    public init(controlCenter: [String], discovered: [String], routes: [MirrorRoute], accessibility: [MirrorAXStep]) {
+    public init(controlCenter: [String], discovered: [String], routes: [MirrorRoute], accessibility: [MirrorAXStep], source: String? = nil, routingDebug: String? = nil) {
         self.controlCenter = controlCenter
         self.discovered = discovered
         self.routes = routes
         self.accessibility = accessibility
+        self.source = source
+        self.routingDebug = routingDebug
     }
 
     public func with(discovered names: [String]) -> MirrorListResult {
-        MirrorListResult(controlCenter: controlCenter, discovered: names, routes: routes, accessibility: accessibility)
+        MirrorListResult(controlCenter: controlCenter, discovered: names, routes: routes, accessibility: accessibility, source: source, routingDebug: routingDebug)
+    }
+
+    public func clearingRoutingDebug() -> MirrorListResult {
+        MirrorListResult(controlCenter: controlCenter, discovered: discovered, routes: routes, accessibility: accessibility, source: source, routingDebug: nil)
     }
 }
 
@@ -441,13 +449,15 @@ public struct MirrorStatus: Sendable, Equatable, Codable {
     public var mode: String?
     public var changed: Bool
     public var points: [Point]?
+    public var note: String?
 
-    public init(target: String, connected: Bool, mode: String? = nil, changed: Bool, points: [Point]? = nil) {
+    public init(target: String, connected: Bool, mode: String? = nil, changed: Bool, points: [Point]? = nil, note: String? = nil) {
         self.target = target
         self.connected = connected
         self.mode = mode
         self.changed = changed
         self.points = points
+        self.note = note
     }
 }
 

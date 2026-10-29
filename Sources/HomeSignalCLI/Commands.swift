@@ -558,6 +558,12 @@ struct MirrorDebugOptions: ParsableArguments {
 
     @Option(name: .customLong("debug-ax-file"), help: "Also write that tree to a file.")
     var debugAXFile: String?
+
+    @Option(name: .long, help: "auto, routing, or controlcenter. auto tries media routing first.")
+    var backend: String = "auto"
+
+    @Flag(name: .customLong("debug"), help: "Print classes, selectors, and devices from the routing backend.")
+    var debug = false
 }
 
 struct MirrorListCommand: AsyncParsableCommand {
@@ -573,13 +579,13 @@ struct MirrorListCommand: AsyncParsableCommand {
 
     func run() async throws {
         let debugFile = debugOptions.debugAXFile.map { HomeSignalPaths.expand($0) }
-        let params = MirrorListParams(discover: discover, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile)
+        let params = MirrorListParams(discover: discover, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile, backend: debugOptions.backend, debugRouting: debugOptions.debug)
         let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorList, params: try params.jsonValue(), command: "mirror.list")
         let listed = try result.decode(MirrorListResult.self)
         if global.json {
             CLIRuntime.succeed(command: "mirror.list", global: global, value: result)
         } else {
-            var lines = ["Control Center:"]
+            var lines = [listed.source == "routing" ? "Routing:" : "Control Center:"]
             lines.append(contentsOf: listed.controlCenter.isEmpty ? ["(none)"] : listed.controlCenter)
             if discover {
                 lines.append("Discovered:")
@@ -588,6 +594,7 @@ struct MirrorListCommand: AsyncParsableCommand {
             CLIRuntime.hooks.sink.writeOut(lines.joined(separator: "\n") + "\n")
         }
         writeAX(listed.accessibility, debug: debugOptions)
+        writeRouting(listed.routingDebug, debug: debugOptions.debug)
     }
 }
 
@@ -603,10 +610,13 @@ struct MirrorStatusCommand: AsyncParsableCommand {
             global: global,
             debug: debugOptions,
             method: IPCMethod.mirrorStatus,
-            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile).jsonValue(),
+            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile, backend: debugOptions.backend, debugRouting: debugOptions.debug).jsonValue(),
             command: "mirror.status"
         )
         CLIRuntime.succeed(command: "mirror.status", global: global, value: result)
+        if debugOptions.debug, let note = (try? result.decode(MirrorStatus.self))?.note {
+            writeRouting(note, debug: true)
+        }
     }
 }
 
@@ -629,10 +639,15 @@ struct MirrorConnectCommand: AsyncParsableCommand {
             mode: mode ?? config.mirror.mode,
             deviceID: deviceID ?? config.mirror.deviceID,
             debugAX: debugOptions.debugAX || debugFile != nil,
-            debugFile: debugFile
+            debugFile: debugFile,
+            backend: debugOptions.backend,
+            debugRouting: debugOptions.debug
         )
         let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorConnect, params: try params.jsonValue(), command: "mirror.connect")
         CLIRuntime.succeed(command: "mirror.connect", global: global, value: result)
+        if debugOptions.debug, let note = (try? result.decode(MirrorStatus.self))?.note {
+            writeRouting(note, debug: true)
+        }
     }
 }
 
@@ -652,16 +667,24 @@ struct MirrorDisconnectCommand: AsyncParsableCommand {
             global: global,
             debug: debugOptions,
             method: IPCMethod.mirrorDisconnect,
-            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile).jsonValue(),
+            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile, backend: debugOptions.backend, debugRouting: debugOptions.debug).jsonValue(),
             command: "mirror.disconnect"
         )
         CLIRuntime.succeed(command: "mirror.disconnect", global: global, value: result)
+        if debugOptions.debug, let note = (try? result.decode(MirrorStatus.self))?.note {
+            writeRouting(note, debug: true)
+        }
     }
 }
 
 private func mirrorSend(global: GlobalOptions, debug: MirrorDebugOptions, method: String, params: JSONValue, command: String) async throws -> JSONValue {
     _ = (debug, command)
     return try await IPCCall.send(global: global, method: method, params: params)
+}
+
+private func writeRouting(_ text: String?, debug: Bool) {
+    guard debug, let text, !text.isEmpty else { return }
+    CLIRuntime.hooks.sink.writeErr(text.hasSuffix("\n") ? text : text + "\n")
 }
 
 private func writeAX(_ steps: [MirrorAXStep], debug: MirrorDebugOptions) {
@@ -781,10 +804,10 @@ enum CommandCatalog {
         CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify it on the target display.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present", "target", "device-id"]),
         CommandSpec(name: "display clear", summary: "Hide the signal window and release the wake assertion.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
         CommandSpec(name: "display status", summary: "Current signal document.", mutating: false, idempotent: true, arguments: [], options: []),
-        CommandSpec(name: "mirror list", summary: "List Screen Mirroring route names.", mutating: false, idempotent: true, arguments: [], options: ["discover", "debug-ax", "debug-ax-file"]),
-        CommandSpec(name: "mirror status", summary: "Whether an AirPlay target is selected.", mutating: false, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file"]),
-        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "device-id", "mode", "debug-ax", "debug-ax-file"]),
-        CommandSpec(name: "mirror disconnect", summary: "Stop mirroring to a target.", mutating: true, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file"]),
+        CommandSpec(name: "mirror list", summary: "List Screen Mirroring route names.", mutating: false, idempotent: true, arguments: [], options: ["discover", "debug-ax", "debug-ax-file", "backend", "debug"]),
+        CommandSpec(name: "mirror status", summary: "Whether an AirPlay target is selected.", mutating: false, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file", "backend", "debug"]),
+        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "device-id", "mode", "debug-ax", "debug-ax-file", "backend", "debug"]),
+        CommandSpec(name: "mirror disconnect", summary: "Stop mirroring to a target.", mutating: true, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file", "backend", "debug"]),
         CommandSpec(name: "input click", summary: "Click.", mutating: true, idempotent: true, arguments: ["x", "y"], options: ["button", "clicks"]),
         CommandSpec(name: "input move", summary: "Move the pointer.", mutating: true, idempotent: true, arguments: ["x", "y"], options: []),
         CommandSpec(name: "input scroll", summary: "Scroll.", mutating: true, idempotent: false, arguments: ["x", "y"], options: ["delta", "axis"]),

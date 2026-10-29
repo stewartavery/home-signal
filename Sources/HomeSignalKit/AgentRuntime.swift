@@ -153,23 +153,39 @@ public actor AgentRuntime {
             return try await stopDisplay(dryRun: request.dryRun)
         case IPCMethod.mirrorStatus:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.status(target: params.target, debugAX: params.debugAX, debugFile: params.debugFile).jsonValue()
+            let status: MirrorStatus
+            if let selecting = mirror as? any MirrorBackendSelecting {
+                status = try await selecting.status(backend: params.backend ?? "auto", target: params.target, debugAX: params.debugAX, debugFile: params.debugFile, routingDebug: params.debugRouting == true)
+            } else {
+                status = try await mirror.status(target: params.target, debugAX: params.debugAX, debugFile: params.debugFile)
+            }
+            return try status.jsonValue()
         case IPCMethod.mirrorConnect:
             let params = try request.params.decode(MirrorConnectParams.self)
-            return try await mirror.connect(
-                target: params.target,
-                mode: params.mode,
-                deviceID: params.deviceID,
-                dryRun: request.dryRun,
-                debugAX: params.debugAX,
-                debugFile: params.debugFile
-            ).jsonValue()
+            let status: MirrorStatus
+            if let selecting = mirror as? any MirrorBackendSelecting {
+                status = try await selecting.connect(backend: params.backend ?? "auto", target: params.target, mode: params.mode, deviceID: params.deviceID, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile, routingDebug: params.debugRouting == true)
+            } else {
+                status = try await mirror.connect(target: params.target, mode: params.mode, deviceID: params.deviceID, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile)
+            }
+            return try status.jsonValue()
         case IPCMethod.mirrorDisconnect:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.disconnect(target: params.target, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile).jsonValue()
+            let status: MirrorStatus
+            if let selecting = mirror as? any MirrorBackendSelecting {
+                status = try await selecting.disconnect(backend: params.backend ?? "auto", target: params.target, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile, routingDebug: params.debugRouting == true)
+            } else {
+                status = try await mirror.disconnect(target: params.target, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile)
+            }
+            return try status.jsonValue()
         case IPCMethod.mirrorList:
             let params = try request.params.decode(MirrorListParams.self)
-            var listed = try await mirror.list(discover: false, debugAX: params.debugAX, debugFile: params.debugFile)
+            var listed: MirrorListResult
+            if let selecting = mirror as? any MirrorBackendSelecting {
+                listed = try await selecting.list(backend: params.backend ?? "auto", discover: false, debugAX: params.debugAX, debugFile: params.debugFile, routingDebug: params.debugRouting == true)
+            } else {
+                listed = try await mirror.list(discover: false, debugAX: params.debugAX, debugFile: params.debugFile)
+            }
             if params.discover {
                 listed = listed.with(discovered: await browser.discover(timeoutSeconds: 3))
             }

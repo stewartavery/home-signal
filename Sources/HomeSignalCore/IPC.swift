@@ -185,10 +185,16 @@ public struct MirrorTargetParams: Sendable, Equatable, Codable {
 
     public var debugFile: String?
 
-    public init(target: String, debugAX: Bool = false, debugFile: String? = nil) {
+    public var backend: String?
+
+    public var debugRouting: Bool?
+
+    public init(target: String, debugAX: Bool = false, debugFile: String? = nil, backend: String? = nil, debugRouting: Bool? = nil) {
         self.target = target
         self.debugAX = debugAX
         self.debugFile = debugFile
+        self.backend = backend
+        self.debugRouting = debugRouting
     }
 }
 
@@ -201,12 +207,18 @@ public struct MirrorConnectParams: Sendable, Equatable, Codable {
 
     public var debugFile: String?
 
-    public init(target: String, mode: String, deviceID: String = "", debugAX: Bool = false, debugFile: String? = nil) {
+    public var backend: String?
+
+    public var debugRouting: Bool?
+
+    public init(target: String, mode: String, deviceID: String = "", debugAX: Bool = false, debugFile: String? = nil, backend: String? = nil, debugRouting: Bool? = nil) {
         self.target = target
         self.mode = mode
         self.deviceID = deviceID
         self.debugAX = debugAX
         self.debugFile = debugFile
+        self.backend = backend
+        self.debugRouting = debugRouting
     }
 }
 
@@ -214,11 +226,15 @@ public struct MirrorListParams: Sendable, Equatable, Codable {
     public var discover: Bool
     public var debugAX: Bool
     public var debugFile: String?
+    public var backend: String?
+    public var debugRouting: Bool?
 
-    public init(discover: Bool, debugAX: Bool, debugFile: String? = nil) {
+    public init(discover: Bool, debugAX: Bool, debugFile: String? = nil, backend: String? = nil, debugRouting: Bool? = nil) {
         self.discover = discover
         self.debugAX = debugAX
         self.debugFile = debugFile
+        self.backend = backend
+        self.debugRouting = debugRouting
     }
 }
 

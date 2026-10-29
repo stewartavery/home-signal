@@ -53,6 +53,13 @@ public protocol MirrorChannel: Sendable {
     func list(discover: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorListResult
 }
 
+public protocol MirrorBackendSelecting: MirrorChannel {
+    func status(backend: String, target: String, debugAX: Bool, debugFile: String?, routingDebug: Bool) async throws -> MirrorStatus
+    func connect(backend: String, target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool, debugFile: String?, routingDebug: Bool) async throws -> MirrorStatus
+    func disconnect(backend: String, target: String, dryRun: Bool, debugAX: Bool, debugFile: String?, routingDebug: Bool) async throws -> MirrorStatus
+    func list(backend: String, discover: Bool, debugAX: Bool, debugFile: String?, routingDebug: Bool) async throws -> MirrorListResult
+}
+
 public protocol InputChannel: Sendable {
     func click(at point: Point, button: String, clicks: Int, dryRun: Bool) async throws -> Point
     func move(to point: Point, dryRun: Bool) async throws -> Point
