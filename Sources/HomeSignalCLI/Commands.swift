@@ -366,7 +366,7 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
         discussion: """
         Pass --file or --spec, not both. The spec is a JSON object with title, an optional theme \
         (default or moonlit-autumn), and a non-empty modules array. Module types are header, message, \
-        columns, list, summary, and alert. Blocks share a grid with gap equal to the l space token and \
+        columns, list, summary, alert, html, image, and video. Blocks share a grid with gap equal to the l space token and \
         flex to fill the canvas. Text uses the type scale and steps down when it would overflow. \
         An empty file, empty spec, unknown theme, unknown module, or blank module text is an error and \
         does not replace the page. The rendered HTML is shown as-is and read back like display html. \
@@ -381,8 +381,8 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
     @Flag(name: .customLong("no-present"), help: "Do not bring the window forward.") var noPresent = false
 
     func run() async throws {
-        let json = try loadJSON()
-        let markup = try DisplayLayout.render(json: json, theme: theme)
+        let loaded = try loadJSON()
+        let markup = try DisplayLayout.render(json: loaded.json, theme: theme, baseDirectory: loaded.baseDirectory)
         let config = try CLIRuntime.load(global)
         let doc = document(from: config, kind: DisplayKind.layout, title: nil, message: nil, rows: [], html: markup)
         _ = try DisplayRendering.prepare(doc)
@@ -396,7 +396,7 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
         CLIRuntime.succeed(command: "display.layout", global: global, value: .object(fields))
     }
 
-    private func loadJSON() throws -> String {
+    private func loadJSON() throws -> (json: String, baseDirectory: String) {
         if file != nil && spec != nil {
             throw HomeSignalError.usage("Pass only one of --file or --spec.")
         }
@@ -404,7 +404,7 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
             guard !spec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw HomeSignalError.displayRefusal("Layout spec is empty.")
             }
-            return spec
+            return (spec, FileManager.default.currentDirectoryPath)
         }
         if let file {
             let path = HomeSignalPaths.expand(file)
@@ -418,7 +418,8 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw HomeSignalError.displayRefusal("Layout file is empty.")
             }
-            return text
+            let base = URL(fileURLWithPath: path).deletingLastPathComponent().path
+            return (text, base)
         }
         throw HomeSignalError.displayRefusal("display layout needs --file or --spec.")
     }

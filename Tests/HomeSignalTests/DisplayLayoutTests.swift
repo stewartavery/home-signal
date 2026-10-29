@@ -197,6 +197,15 @@ final class DisplayLayoutTests: XCTestCase {
             #"{"title":"Example","modules":[{"type":"alert","text":""}]}"#,
             #"{"title":"Example","modules":[{"type":"alert","text":"Example","level":"panic"}]}"#,
             #"{"title":"Example","modules":[{"type":"alert","text":"Example","level":""}]}"#,
+            #"{"title":"Example","modules":[{"type":"html"}]}"#,
+            #"{"title":"Example","modules":[{"type":"html","html":"   "}]}"#,
+            #"{"title":"Example","modules":[{"type":"image"}]}"#,
+            #"{"title":"Example","modules":[{"type":"image","src":"  "}]}"#,
+            #"{"title":"Example","modules":[{"type":"image","src":"https://example.com/example.png","fit":"stretch"}]}"#,
+            #"{"title":"Example","modules":[{"type":"image","src":"https://example.com/example.png","fit":""}]}"#,
+            #"{"title":"Example","modules":[{"type":"video"}]}"#,
+            #"{"title":"Example","modules":[{"type":"video","src":""}]}"#,
+            #"{"title":"Example","modules":[{"type":"video","src":"https://example.com/example.mp4","fit":"fill"}]}"#,
         ]
         for sample in samples {
             XCTAssertThrowsError(try DisplayLayout.render(json: sample), sample) { error in

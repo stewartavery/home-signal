@@ -1,7 +1,7 @@
 import Foundation
 
 enum DisplayModuleHTML {
-    static func render(_ block: DisplayBlock) -> String {
+    static func render(_ block: DisplayBlock, baseDirectory: String?) throws -> String {
         switch block {
         case .header(let title, let subtitle, let size):
             var inner = "<h1>\(escape(title))</h1>"
@@ -37,7 +37,42 @@ enum DisplayModuleHTML {
             }
             inner += "<p>\(escape(text))</p>"
             return section("alert", fluid(size, inner), level: level)
+        case .html(let html):
+            return section("html", "<iframe class=\"embed\" srcdoc=\"\(escape(html))\"></iframe>")
+        case .image(let src, let fit, let caption):
+            let resolved = try DisplayMediaSource.resolve(src, kind: .image, baseDirectory: baseDirectory)
+            return section("image", mediaTag("img", src: resolved, fit: fit, caption: caption))
+        case .video(let src, let fit, let caption, let autoplay, let muted, let loop):
+            let resolved = try DisplayMediaSource.resolve(src, kind: .video, baseDirectory: baseDirectory)
+            return section("video", mediaTag("video", src: resolved, fit: fit, caption: caption, autoplay: autoplay, muted: muted, loop: loop))
         }
+    }
+
+    private static func mediaTag(
+        _ tag: String,
+        src: String,
+        fit: DisplayMediaFit,
+        caption: String?,
+        autoplay: Bool = false,
+        muted: Bool = false,
+        loop: Bool = false
+    ) -> String {
+        var attributes = [
+            "class=\"media\"",
+            "data-fit=\"\(fit.rawValue)\"",
+            "src=\"\(escape(src))\"",
+        ]
+        if tag == "img" {
+            attributes.append("alt=\"\(escape(caption ?? ""))\"")
+        } else {
+            attributes.append("playsinline")
+            if autoplay { attributes.append("autoplay") }
+            if muted { attributes.append("muted") }
+            if loop { attributes.append("loop") }
+        }
+        let void = tag == "img" ? ">" : "></\(tag)>"
+        let captionHTML = caption.map { "<p class=\"caption\">\(escape($0))</p>" } ?? ""
+        return "<div class=\"media-slot\"><\(tag) \(attributes.joined(separator: " "))\(void)</div>\(captionHTML)"
     }
 
     private static func section(_ kind: String, _ body: String, level: DisplayAlertLevel? = nil) -> String {
