@@ -30,12 +30,12 @@ public struct MacSessionLock: SessionLockReading {
     }
 }
 
-private struct Apply {
+private struct Apply: Sendable {
     var identifier: String
     var enabled: Bool
 }
 
-private struct CollectResult {
+private struct CollectResult: Sendable {
     var snapshot: RouteSnapshot
     var error: String?
 }
