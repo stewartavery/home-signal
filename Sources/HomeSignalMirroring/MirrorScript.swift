@@ -1,20 +1,24 @@
 public enum MirrorScript {
     public static let library = """
     on safeAttr(el, attrName)
-      try
-        set v to value of attribute attrName of el
-        if v is missing value then return ""
-        return clean(v as text)
-      end try
+      tell application "System Events"
+        try
+          set v to value of attribute attrName of el
+          if v is missing value then return ""
+          return my clean(v as text)
+        end try
+      end tell
       return ""
     end safeAttr
     on safeProp(el, which)
-      try
-        if which is "role" then return clean(role of el as text)
-        if which is "subrole" then return clean(subrole of el as text)
-        if which is "name" then return clean(name of el as text)
-        if which is "desc" then return clean(description of el as text)
-      end try
+      tell application "System Events"
+        try
+          if which is "role" then return my clean(role of el as text)
+          if which is "subrole" then return my clean(subrole of el as text)
+          if which is "name" then return my clean(name of el as text)
+          if which is "desc" then return my clean(description of el as text)
+        end try
+      end tell
       return ""
     end safeProp
     on clean(t)
@@ -46,13 +50,15 @@ public enum MirrorScript {
     on walk(el, depth, maxDepth, soFar)
       if depth > maxDepth then return soFar
       if (count of soFar) > 20000 then return soFar
-      set soFar to soFar & lineFor(el, depth)
-      try
-        set kids to UI elements of el
-        repeat with childEl in kids
-          set soFar to walk(childEl, depth + 1, maxDepth, soFar)
-        end repeat
-      end try
+      set soFar to soFar & my lineFor(el, depth)
+      tell application "System Events"
+        try
+          set kids to UI elements of el
+          repeat with childEl in kids
+            set soFar to my walk(childEl, depth + 1, maxDepth, soFar)
+          end repeat
+        end try
+      end tell
       return soFar
     end walk
     on routeRole(roleName)
@@ -81,7 +87,7 @@ public enum MirrorScript {
           tell application "System Events"
             tell process "ControlCenter"
               repeat with anItem in menu bar items of menu bar 1
-                set out to out & lineFor(anItem, 1)
+                set out to out & my lineFor(anItem, 1)
               end repeat
             end tell
           end tell
@@ -101,8 +107,8 @@ public enum MirrorScript {
           tell application "System Events"
             tell process "ControlCenter"
               repeat with anItem in menu bar items of menu bar 1
-                set d to safeProp(anItem, "desc")
-                set n to safeProp(anItem, "name")
+                set d to my safeProp(anItem, "desc")
+                set n to my safeProp(anItem, "name")
                 if (d is wanted) or (n is wanted) then
                   click anItem
                   set clicked to true
@@ -128,7 +134,7 @@ public enum MirrorScript {
           set out to ""
           tell application "System Events"
             tell process "ControlCenter"
-              set out to walk(window 1, 1, \(maxDepth), "")
+              set out to my walk(window 1, 1, \(maxDepth), "")
             end tell
           end tell
           return out
@@ -150,11 +156,11 @@ public enum MirrorScript {
             tell process "ControlCenter"
               set bits to entire contents of window 1
               repeat with el in bits
-                set ident to safeAttr(el, "AXIdentifier")
-                set d to safeProp(el, "desc")
-                set n to safeProp(el, "name")
-                set roleName to safeProp(el, "role")
-                if controlRole(roleName) then
+                set ident to my safeAttr(el, "AXIdentifier")
+                set d to my safeProp(el, "desc")
+                set n to my safeProp(el, "name")
+                set roleName to my safeProp(el, "role")
+                if my controlRole(roleName) then
                   if ((wantedID is not "") and (ident is wantedID)) or ((wantedDesc is not "") and ((d is wantedDesc) or (n is wantedDesc))) then
                     click el
                     set clicked to true
@@ -185,9 +191,9 @@ public enum MirrorScript {
                 try
                   set bits to entire contents of w
                   repeat with el in bits
-                    set roleName to safeProp(el, "role")
-                    if routeRole(roleName) then
-                      set out to out & lineFor(el, 1)
+                    set roleName to my safeProp(el, "role")
+                    if my routeRole(roleName) then
+                      set out to out & my lineFor(el, 1)
                     end if
                   end repeat
                 end try
@@ -213,8 +219,8 @@ public enum MirrorScript {
                 try
                   set bits to entire contents of w
                   repeat with el in bits
-                    set d to safeProp(el, "desc")
-                    set n to safeProp(el, "name")
+                    set d to my safeProp(el, "desc")
+                    set n to my safeProp(el, "name")
                     if (d is wanted) or (n is wanted) then
                       click el
                       set clicked to true
