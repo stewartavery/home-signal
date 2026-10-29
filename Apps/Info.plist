@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>HomeSignalAgent</string>
+  <key>CFBundleIdentifier</key>
+  <string>home-signal.agent</string>
+  <key>CFBundleName</key>
+  <string>HomeSignalAgent</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSHomeKitUsageDescription</key>
+  <string>home-signal reads and controls HomeKit lights and scenes when a command asks it to.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>home-signal captures a display so a command can check what is on screen.</string>
+</dict>
+</plist>

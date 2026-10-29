@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+.DS_Store
+/tmp/
+*.sock
+
+.privacy-denylist

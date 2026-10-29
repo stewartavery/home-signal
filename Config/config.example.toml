@@ -1,0 +1,82 @@
+version = 1
+
+# Copy to ~/.config/home-signal/config.toml and replace every placeholder.
+# Device names, AirPlay targets, display sizes, and click positions come from
+# your Home app and from `home-signal displays`. These values are examples only.
+
+[homekit]
+backend = "homekit"
+
+[homekit.shortcuts]
+get_state = "HomeSignal Get State"
+set_state = "HomeSignal Set State"
+list_devices = "HomeSignal List Devices"
+list_scenes = "HomeSignal List Scenes"
+run_scene = "HomeSignal Run Scene"
+
+[homekit.http]
+base_url = "http://127.0.0.1:8581"
+token_env = "HOME_SIGNAL_HTTP_TOKEN"
+
+[display]
+background = "#000000"
+foreground = "#ffffff"
+accent = "#99ccff"
+message_size = "10vw"
+title_size = "6vw"
+row_size = "3.2vw"
+display_name = "main"
+park_mouse = true
+
+[mirror]
+target = "TV"
+device_id = ""
+mode = "window"
+settle_seconds = 3
+
+[mirror.clicks]
+choose_content = { x = 0.50, y = 0.78 }
+window_or_app = { x = 0.50, y = 0.55 }
+mirror_this_window = { x = 0.50, y = 0.42 }
+
+[[displays]]
+name = "main"
+width = 1920
+height = 1080
+origin_x = 0
+origin_y = 0
+primary = true
+
+[[displays]]
+name = "external"
+width = 1920
+height = 1080
+origin_x = 1920
+origin_y = 0
+primary = false
+
+[input]
+park_display = "main"
+park_corner = "bottom-right"
+park_inset = 12
+
+[agent]
+socket_path = "~/.local/share/home-signal/agent.sock"
+
+[simulated]
+scenes = ["Scene A"]
+
+[[simulated.devices]]
+name = "Lamp 1"
+room = "Room A"
+power = true
+brightness = 40
+hue = 30.0
+saturation = 80.0
+
+[[simulated.devices]]
+name = "Lamp 2"
+room = "Room B"
+power = false
+brightness = 100
+color_temperature_kelvin = 2700
