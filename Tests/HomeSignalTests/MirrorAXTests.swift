@@ -150,8 +150,18 @@ final class MirrorAXTests: XCTestCase {
     }
 
     func testPermissionErrorDetectsTheControlCenterWindowFailure() {
-        XCTAssertTrue(MirrorAX.permissionProblem("System Events got an error: Can’t get window 1 of process \"ControlCenter\". (-1728)"))
-        XCTAssertTrue(MirrorAX.permissionProblem("osascript is not allowed assistive access"))
+        let missingWindow = "System Events got an error: Can't get window 1 of process \"ControlCenter\". Invalid index. (-1719)"
+        XCTAssertFalse(MirrorAX.permissionProblem(missingWindow))
+        XCTAssertTrue(MirrorAX.notReadyProblem(missingWindow))
+        let notReady = MirrorAX.automationFailure(missingWindow)
+        XCTAssertEqual(notReady.code, "not_ready")
+        XCTAssertEqual(notReady.exitCode, 7)
+        XCTAssertFalse(notReady.hint?.contains("Grant Accessibility") == true)
+        XCTAssertTrue(MirrorAX.permissionProblem("osascript is not allowed assistive access. (-25211)"))
+        XCTAssertTrue(MirrorAX.permissionProblem("Not authorized to send Apple events to System Events. (-1743)"))
+        XCTAssertTrue(MirrorAX.permissionProblem("osascript is not allowed assistive access. (-10006)"))
+        XCTAssertFalse(MirrorAX.permissionProblem("System Events got an error: Can’t get window 1 of process \"ControlCenter\". (-1728)"))
+        XCTAssertFalse(MirrorAX.notReadyProblem("osascript is not allowed assistive access. (-25211)"))
         XCTAssertFalse(MirrorAX.permissionProblem("AirPlay target not found: Example TV"))
         let syntax = "64:72: syntax error: Expected end of line but found identifier. (-2741)"
         XCTAssertTrue(MirrorAX.syntaxProblem(syntax))
@@ -188,6 +198,7 @@ final class MirrorAXTests: XCTestCase {
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
+            ok("open"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
             ok("clicked"),
@@ -220,12 +231,53 @@ final class MirrorAXTests: XCTestCase {
         XCTAssertTrue(saved.contains("AXTitle=missing value"))
         XCTAssertTrue(saved.contains("AXValue=Example TV"))
         XCTAssertTrue(saved.contains("screen-mirroring-preferences"))
+        XCTAssertTrue(runner.scripts.contains { $0.contains("window-open") })
+        XCTAssertTrue(runner.scripts.contains { $0.contains("close-panel") })
+    }
+
+    func testControlCenterClickRetriesWhenThePanelWasAlreadyOpen() async throws {
+        let runner = ToggleRunner(openAfterClick: 2)
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper(),
+            ax: QueueAX([deviceListTree()])
+        )
+        let listed = try await mirror.list(discover: false, debugAX: false, debugFile: nil)
+        XCTAssertEqual(listed.controlCenter, ["Example TV", "Example Speaker"])
+        XCTAssertEqual(runner.clicks, 2)
+        XCTAssertGreaterThan(runner.probes, 1)
+        XCTAssertGreaterThanOrEqual(runner.closes, 1)
+    }
+
+    func testMissingControlCenterWindowIsNotReadyAndStillCloses() async throws {
+        let runner = ToggleRunner(openAfterClick: 99)
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper()
+        )
+        do {
+            _ = try await mirror.list(discover: false, debugAX: false, debugFile: nil)
+            XCTFail("expected the window to stay closed")
+        } catch let error as HomeSignalError {
+            XCTAssertEqual(error.code, "not_ready")
+            XCTAssertEqual(error.exitCode, 7)
+            XCTAssertNotEqual(error.code, "permission")
+        }
+        XCTAssertEqual(runner.clicks, 2)
+        XCTAssertGreaterThanOrEqual(runner.closes, 1)
     }
 
     func testMirrorListOmitsGenericControlLabels() async throws {
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
+            ok("open"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
         ])
@@ -256,6 +308,7 @@ final class MirrorAXTests: XCTestCase {
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
+            ok("open"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
         ])
@@ -287,6 +340,7 @@ final class MirrorAXTests: XCTestCase {
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
+            ok("open"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
         ])
@@ -311,7 +365,7 @@ final class MirrorAXTests: XCTestCase {
 
     func testMissingAutomationIsAPermissionError() async throws {
         let runner = QueueRunner(outputs: [
-            CommandOutput(status: 1, stdout: Data(), stderr: Data("Can’t get window 1 of process \"ControlCenter\". (-1728)".utf8)),
+            CommandOutput(status: 1, stdout: Data(), stderr: Data("osascript is not allowed assistive access. (-25211)".utf8)),
         ])
         let mirror = SystemEventsMirror(
             config: HomeSignalConfig.standard.mirror,
@@ -582,6 +636,44 @@ private func lines(_ rows: [String]) -> String {
 
 private func ok(_ text: String) -> CommandOutput {
     CommandOutput(status: 0, stdout: Data(text.utf8), stderr: Data())
+}
+
+private final class ToggleRunner: CommandRunning, @unchecked Sendable {
+    let openAfterClick: Int
+    var clicks = 0
+    var probes = 0
+    var closes = 0
+
+    init(openAfterClick: Int) {
+        self.openAfterClick = openAfterClick
+    }
+
+    func execute(launchPath: String, arguments: [String], input: Data?, timeoutSeconds: Double) async throws -> CommandOutput {
+        _ = (launchPath, input, timeoutSeconds)
+        let script = arguments.joined(separator: "\n")
+        if script.contains("dump-menubar") {
+            return ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center"))
+        }
+        if script.contains("window-open") {
+            probes += 1
+            return ok(clicks >= openAfterClick ? "open" : "closed")
+        }
+        if script.contains("click-menubar") {
+            clicks += 1
+            return ok("clicked")
+        }
+        if script.contains("dump-window") {
+            return ok(lines(controlCenterModules()))
+        }
+        if script.contains("click-module") {
+            return ok("clicked")
+        }
+        if script.contains("close-panel") {
+            closes += 1
+            return ok("closed")
+        }
+        return ok("ok")
+    }
 }
 
 private final class QueueRunner: CommandRunning, @unchecked Sendable {

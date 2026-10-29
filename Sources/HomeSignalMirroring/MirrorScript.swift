@@ -136,6 +136,21 @@ public enum MirrorScript {
         """
     }
 
+    public static func windowOpen() -> String {
+        """
+        on run
+          set mirrorAction to "window-open"
+          tell application "System Events"
+            tell process "ControlCenter"
+              set n to count of windows
+              if n > 0 then return "open"
+            end tell
+          end tell
+          return "closed"
+        end run
+        """
+    }
+
     public static func dumpWindow(maxDepth: Int = 6) -> String {
         library + """
 
@@ -288,13 +303,24 @@ public enum MirrorScript {
 
     public static func closePanel() -> String {
         """
-        tell application "System Events" to key code 53
+        on run
+          set mirrorAction to "close-panel"
+          tell application "System Events"
+            tell process "ControlCenter"
+              set n to count of windows
+              if n is 0 then return "closed"
+            end tell
+            key code 53
+          end tell
+          return "closed"
+        end run
         """
     }
 
     public static var generated: [String] {
         [
             dumpMenuBar(),
+            windowOpen(),
             dumpWindow(),
             dumpRoutes(),
             clickMenuBar("Example TV"),

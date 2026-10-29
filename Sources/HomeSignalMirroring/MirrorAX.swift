@@ -198,11 +198,17 @@ public enum MirrorAX {
     public static func permissionProblem(_ detail: String) -> Bool {
         if syntaxProblem(detail) { return false }
         let lowered = detail.lowercased()
-        if lowered.contains("window 1 of process") { return true }
-        if lowered.contains("not authorized to send apple events") { return true }
+        if lowered.contains("-1743") || lowered.contains("-25211") || lowered.contains("-10006") { return true }
+        if lowered.contains("not authorized") { return true }
         if lowered.contains("not allowed assistive") { return true }
         if lowered.contains("assistive access") { return true }
         return false
+    }
+
+    public static func notReadyProblem(_ detail: String) -> Bool {
+        if syntaxProblem(detail) || permissionProblem(detail) { return false }
+        let lowered = detail.lowercased()
+        return lowered.contains("-1719") || lowered.contains("invalid index")
     }
 
     public static func automationFailure(_ detail: String) -> HomeSignalError {
@@ -216,6 +222,9 @@ public enum MirrorAX {
         }
         if permissionProblem(detail) {
             return HomeSignalError.permissionDenied(detail)
+        }
+        if notReadyProblem(detail) {
+            return HomeSignalError.notReady(detail)
         }
         return HomeSignalError.backend(
             detail.isEmpty ? "Control Center automation failed." : detail,

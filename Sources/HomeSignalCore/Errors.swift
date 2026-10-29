@@ -63,6 +63,15 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         )
     }
 
+    public static func notReady(_ detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "not_ready",
+            message: "Control Center had no window yet. \(detail)",
+            hint: "The menu bar item toggles Control Center, so a click can close a panel that was already open. This is a timing error, not an Accessibility permission. Run the command again.",
+            exitCode: 7
+        )
+    }
+
     public static func permissionDenied(_ detail: String) -> HomeSignalError {
         HomeSignalError(
             code: "permission",
