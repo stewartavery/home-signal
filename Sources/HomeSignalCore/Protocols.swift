@@ -33,10 +33,24 @@ public protocol DisplayPlacing: Sendable {
     func dismiss() async
 }
 
+public protocol AirPlayDiscovering: Sendable {
+    func discover(timeoutSeconds: Double) async -> [String]
+}
+
+public struct EmptyAirPlayBrowser: AirPlayDiscovering {
+    public init() {}
+
+    public func discover(timeoutSeconds: Double) async -> [String] {
+        _ = timeoutSeconds
+        return []
+    }
+}
+
 public protocol MirrorChannel: Sendable {
-    func status(target: String) async throws -> MirrorStatus
-    func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus
-    func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus
+    func status(target: String, debugAX: Bool) async throws -> MirrorStatus
+    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus
+    func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus
+    func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult
 }
 
 public protocol InputChannel: Sendable {

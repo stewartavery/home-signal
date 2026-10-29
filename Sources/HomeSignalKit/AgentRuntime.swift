@@ -15,6 +15,7 @@ public actor AgentRuntime {
     private let screens: any AttachedDisplayListing
     private let placer: any DisplayPlacing
     private let session: DisplaySession
+    private let browser: any AirPlayDiscovering
     private var holdingWake = false
     private let log = Log(category: "runtime")
 
@@ -30,7 +31,8 @@ public actor AgentRuntime {
         stop: StopFlag = StopFlag(),
         power: (any DisplayPowerControlling)? = nil,
         screens: (any AttachedDisplayListing)? = nil,
-        placer: (any DisplayPlacing)? = nil
+        placer: (any DisplayPlacing)? = nil,
+        browser: any AirPlayDiscovering = EmptyAirPlayBrowser()
     ) {
         let resolvedDisplays = displays ?? config.displays
         self.config = config
@@ -57,6 +59,7 @@ public actor AgentRuntime {
             reconnectSeconds: config.display.reconnectSeconds,
             mirrorMode: config.mirror.mode
         )
+        self.browser = browser
     }
 
     public func handleData(_ data: Data) async -> Data {
@@ -150,18 +153,26 @@ public actor AgentRuntime {
             return try await stopDisplay(dryRun: request.dryRun)
         case IPCMethod.mirrorStatus:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.status(target: params.target).jsonValue()
+            return try await mirror.status(target: params.target, debugAX: params.debugAX).jsonValue()
         case IPCMethod.mirrorConnect:
             let params = try request.params.decode(MirrorConnectParams.self)
             return try await mirror.connect(
                 target: params.target,
                 mode: params.mode,
                 deviceID: params.deviceID,
-                dryRun: request.dryRun
+                dryRun: request.dryRun,
+                debugAX: params.debugAX
             ).jsonValue()
         case IPCMethod.mirrorDisconnect:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.disconnect(target: params.target, dryRun: request.dryRun).jsonValue()
+            return try await mirror.disconnect(target: params.target, dryRun: request.dryRun, debugAX: params.debugAX).jsonValue()
+        case IPCMethod.mirrorList:
+            let params = try request.params.decode(MirrorListParams.self)
+            var listed = try await mirror.list(discover: false, debugAX: params.debugAX)
+            if params.discover {
+                listed = listed.with(discovered: await browser.discover(timeoutSeconds: 3))
+            }
+            return try listed.jsonValue()
         case IPCMethod.inputClick:
             let params = try request.params.decode(InputClickParams.self)
             let point = try await input.click(

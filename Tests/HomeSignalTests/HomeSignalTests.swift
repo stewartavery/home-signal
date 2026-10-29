@@ -162,24 +162,25 @@ final class HomeSignalTests: XCTestCase {
         XCTAssertEqual(restored, prior)
     }
 
-    func testMirrorScriptUsesTheRequestedName() {
-        let script = MirrorScript.controlCenter(target: "TV", deviceID: "", action: "connect", leaveOpen: true)
-        XCTAssertTrue(script.contains("\"TV\""))
-        XCTAssertTrue(script.contains("already-connected"))
-        XCTAssertTrue(script.contains("controlcenter-screen-mirroring"))
-        XCTAssertFalse(script.contains("screen-mirroring-device"))
+    func testMirrorScriptClicksTheResolvedName() {
+        let script = MirrorScript.clickRoute("Example TV")
+        XCTAssertTrue(script.contains("\"Example TV\""))
+        XCTAssertTrue(script.contains("dump-routes") == false)
+        XCTAssertTrue(MirrorScript.dumpWindow().contains("dump-window"))
+        XCTAssertTrue(MirrorScript.clickModule(identifier: "controlcenter-screen-mirroring", description: "Screen Mirroring").contains("controlcenter-screen-mirroring"))
+        XCTAssertTrue(MirrorScript.dumpMenuBar().contains("dump-menubar"))
     }
 
     func testMirrorConnectIsIdempotent() async throws {
         let mirror = SimulatedMirror()
-        let first = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false)
+        let first = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false)
         XCTAssertTrue(first.changed)
-        let second = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false)
+        let second = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false)
         XCTAssertFalse(second.changed)
         XCTAssertTrue(second.connected)
-        let dry = await mirror.disconnect(target: "TV", dryRun: true)
+        let dry = await mirror.disconnect(target: "TV", dryRun: true, debugAX: false)
         XCTAssertTrue(dry.changed)
-        let still = await mirror.status(target: "TV")
+        let still = await mirror.status(target: "TV", debugAX: false)
         XCTAssertTrue(still.connected)
     }
 

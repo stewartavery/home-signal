@@ -54,6 +54,43 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         HomeSignalError(code: "config", message: message, hint: hint, exitCode: 2)
     }
 
+    public static func permissionDenied(_ detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "permission",
+            message: "Control Center is not readable. Accessibility and Automation are required. \(detail)",
+            hint: "Grant Accessibility, and Automation for System Events to control Control Center, to HomeSignalAgent. Then try again.",
+            exitCode: 6
+        )
+    }
+
+    public static func airPlayNotFound(target: String, seen: [String], debug: String? = nil) -> HomeSignalError {
+        let list = seen.isEmpty ? "none" : seen.joined(separator: ", ")
+        var hint = "Run `home-signal mirror list` to see the Screen Mirroring names."
+        if let debug, !debug.isEmpty {
+            hint += "\n" + debug
+        }
+        return HomeSignalError(
+            code: "not_found",
+            message: "AirPlay target \(target) was not found. Control Center showed: \(list).",
+            hint: hint,
+            exitCode: 3
+        )
+    }
+
+    public static func screenMirroringUnavailable(seen: [String], debug: String? = nil) -> HomeSignalError {
+        let list = seen.isEmpty ? "none" : seen.joined(separator: ", ")
+        var hint = "Screen Mirroring is opened from the Control Center menu bar item, then the Screen Mirroring module. Pass --debug-ax to dump the accessibility tree."
+        if let debug, !debug.isEmpty {
+            hint += "\n" + debug
+        }
+        return HomeSignalError(
+            code: "not_found",
+            message: "Screen Mirroring controls were not found. Accessibility nodes: \(list).",
+            hint: hint,
+            exitCode: 3
+        )
+    }
+
     public static func notFound(_ kind: String, name: String) -> HomeSignalError {
         HomeSignalError(
             code: "not_found",

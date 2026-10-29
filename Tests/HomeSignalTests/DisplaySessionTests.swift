@@ -433,11 +433,13 @@ actor LinkingMirror: MirrorChannel {
         self.addOnConnect = addOnConnect
     }
 
-    func status(target: String) async throws -> MirrorStatus {
-        MirrorStatus(target: target, connected: false, changed: false)
+    func status(target: String, debugAX: Bool) async throws -> MirrorStatus {
+        _ = debugAX
+        return MirrorStatus(target: target, connected: false, changed: false)
     }
 
-    func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
+    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        _ = debugAX
         connects += 1
         connectNames.append(target)
         connectIDs.append(deviceID)
@@ -447,7 +449,13 @@ actor LinkingMirror: MirrorChannel {
         return MirrorStatus(target: target, connected: true, mode: mode, changed: true)
     }
 
-    func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus {
+    func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult {
+        _ = (discover, debugAX)
+        return MirrorListResult(controlCenter: [], discovered: [], routes: [], accessibility: [])
+    }
+
+    func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        _ = debugAX
         _ = dryRun
         return MirrorStatus(target: target, connected: false, changed: true)
     }

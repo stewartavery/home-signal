@@ -56,7 +56,8 @@ struct AgentCommand: AsyncParsableCommand {
             stop: stop,
             power: signals.power,
             screens: signals.screens,
-            placer: signals.placer
+            placer: signals.placer,
+            browser: makeBrowser(simulate: simulate)
         )
         Log(category: "agent").info("backend \(lights.backendID) simulate \(simulate)")
         try await AgentServer.serve(runtime: runtime, stop: stop, path: socketPath)
@@ -85,12 +86,17 @@ private func makeLights(_ config: HomeSignalConfig, simulate: Bool) throws -> an
     case "http":
         return try HTTPLightBackend(config: config.homekit.http)
     case "homekit":
+        let moduleAvailable = homeKitModuleAvailable()
+        let entitled = moduleAvailable && homeKitEntitlementPresent()
+        if let refusal = HomeKitBackendGate.refusal(moduleAvailable: moduleAvailable, entitlementPresent: entitled) {
+            throw refusal
+        }
         #if canImport(HomeKit)
         return HomeKitLightBackend()
         #else
         throw HomeSignalError.unsupported(
-            "This build cannot link HomeKit.",
-            hint: "Set homekit.backend to shortcuts or http, or build the agent as a Mac Catalyst app with the HomeKit entitlement. See README.md."
+            "HomeKit backend is unavailable. This build does not link the HomeKit framework.",
+            hint: "Set homekit.backend to \"shortcuts\" or \"http\". See README.md."
         )
         #endif
     default:
@@ -154,6 +160,47 @@ private func makeMirror(_ config: HomeSignalConfig, displays: [DisplayBounds], i
     #endif
 }
 
+private func makeBrowser(simulate: Bool) -> any AirPlayDiscovering {
+    #if os(macOS)
+    if !simulate {
+        return DNSSDAirPlayBrowser()
+    }
+    #endif
+    return EmptyAirPlayBrowser()
+}
+
+private func homeKitModuleAvailable() -> Bool {
+    #if canImport(HomeKit)
+    return true
+    #else
+    return false
+    #endif
+}
+
+private func homeKitEntitlementPresent() -> Bool {
+    #if os(macOS)
+    let path = Bundle.main.executableURL?.path ?? CommandLine.arguments.first ?? ""
+    guard !path.isEmpty else { return false }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = ["-d", "--entitlements", ":-", path]
+    let stdout = Pipe()
+    process.standardOutput = stdout
+    process.standardError = Pipe()
+    do {
+        try process.run()
+        process.waitUntilExit()
+    } catch {
+        return false
+    }
+    let data = stdout.fileHandleForReading.readDataToEndOfFile()
+    let text = String(decoding: data, as: UTF8.self)
+    return HomeKitBackendGate.plistGrantsHomeKit(text)
+    #else
+    return false
+    #endif
+}
+
 private func makeCapture(simulate: Bool) -> any CaptureChannel {
     #if os(macOS)
     if !simulate {
@@ -161,6 +208,15 @@ private func makeCapture(simulate: Bool) -> any CaptureChannel {
     }
     #endif
     return SimulatedCapture()
+}
+
+private func agentFailure(_ error: Error) -> (String, Int32) {
+    if let signal = error as? HomeSignalError {
+        return (String(describing: signal), signal.exitCode)
+    }
+    let text = AgentCommand.fullMessage(for: error)
+    let code = AgentCommand.exitCode(for: error).rawValue
+    return (text, code)
 }
 
 #if os(macOS)
@@ -187,11 +243,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try await command.run()
                 NSApplication.shared.terminate(nil)
             } catch {
-                let text = AgentCommand.fullMessage(for: error)
+                let (text, code) = agentFailure(error)
                 if !text.isEmpty {
                     FileHandle.standardError.write(Data((text.hasSuffix("\n") ? text : text + "\n").utf8))
                 }
-                let code = AgentCommand.exitCode(for: error).rawValue
                 Darwin.exit(code == 0 ? 0 : code)
             }
         }
@@ -220,11 +275,10 @@ struct LinuxAgentMain {
             var command = try AgentCommand.parse()
             try await command.run()
         } catch {
-            let text = AgentCommand.fullMessage(for: error)
+            let (text, code) = agentFailure(error)
             if !text.isEmpty {
                 FileHandle.standardError.write(Data((text.hasSuffix("\n") ? text : text + "\n").utf8))
             }
-            let code = AgentCommand.exitCode(for: error).rawValue
             exit(code == 0 ? 0 : code)
         }
     }

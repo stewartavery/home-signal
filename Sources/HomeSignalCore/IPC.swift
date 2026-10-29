@@ -15,6 +15,7 @@ public enum IPCMethod {
     public static let mirrorStatus = "mirror.status"
     public static let mirrorConnect = "mirror.connect"
     public static let mirrorDisconnect = "mirror.disconnect"
+    public static let mirrorList = "mirror.list"
     public static let inputClick = "input.click"
     public static let inputMove = "input.move"
     public static let inputScroll = "input.scroll"
@@ -26,7 +27,7 @@ public enum IPCMethod {
 
     public static let all = [
         capabilities, lightsList, lightsGet, lightsSet, lightsBlink, homeBlink, scenesList, scenesRun,
-        displayShow, displayStatus, displayClear, mirrorStatus, mirrorConnect, mirrorDisconnect,
+        displayShow, displayStatus, displayClear, mirrorStatus, mirrorConnect, mirrorDisconnect, mirrorList,
         inputClick, inputMove, inputScroll, inputPark, captureScreenshot, displaysList, systemPing, systemShutdown,
     ]
 }
@@ -180,7 +181,12 @@ public struct PresentParams: Sendable, Equatable, Codable {
 
 public struct MirrorTargetParams: Sendable, Equatable, Codable {
     public var target: String
-    public init(target: String) { self.target = target }
+    public var debugAX: Bool
+
+    public init(target: String, debugAX: Bool = false) {
+        self.target = target
+        self.debugAX = debugAX
+    }
 }
 
 public struct MirrorConnectParams: Sendable, Equatable, Codable {
@@ -188,10 +194,23 @@ public struct MirrorConnectParams: Sendable, Equatable, Codable {
     public var mode: String
     public var deviceID: String
 
-    public init(target: String, mode: String, deviceID: String = "") {
+    public var debugAX: Bool
+
+    public init(target: String, mode: String, deviceID: String = "", debugAX: Bool = false) {
         self.target = target
         self.mode = mode
         self.deviceID = deviceID
+        self.debugAX = debugAX
+    }
+}
+
+public struct MirrorListParams: Sendable, Equatable, Codable {
+    public var discover: Bool
+    public var debugAX: Bool
+
+    public init(discover: Bool, debugAX: Bool) {
+        self.discover = discover
+        self.debugAX = debugAX
     }
 }
 

@@ -395,6 +395,46 @@ public struct PanelBounds: Sendable, Equatable, Codable {
     }
 }
 
+public struct MirrorRoute: Sendable, Equatable, Codable {
+    public var name: String
+    public var identifier: String
+    public var selected: Bool
+
+    public init(name: String, identifier: String, selected: Bool) {
+        self.name = name
+        self.identifier = identifier
+        self.selected = selected
+    }
+}
+
+public struct MirrorAXStep: Sendable, Equatable, Codable {
+    public var step: String
+    public var tree: String
+
+    public init(step: String, tree: String) {
+        self.step = step
+        self.tree = tree
+    }
+}
+
+public struct MirrorListResult: Sendable, Equatable, Codable {
+    public var controlCenter: [String]
+    public var discovered: [String]
+    public var routes: [MirrorRoute]
+    public var accessibility: [MirrorAXStep]
+
+    public init(controlCenter: [String], discovered: [String], routes: [MirrorRoute], accessibility: [MirrorAXStep]) {
+        self.controlCenter = controlCenter
+        self.discovered = discovered
+        self.routes = routes
+        self.accessibility = accessibility
+    }
+
+    public func with(discovered names: [String]) -> MirrorListResult {
+        MirrorListResult(controlCenter: controlCenter, discovered: names, routes: routes, accessibility: accessibility)
+    }
+}
+
 public struct MirrorStatus: Sendable, Equatable, Codable {
     public var target: String
     public var connected: Bool

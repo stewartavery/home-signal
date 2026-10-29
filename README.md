@@ -22,10 +22,10 @@ On a Mac with Swift 6:
 
 ```bash
 swift build -c release
-scripts/install.sh
+Scripts/install.sh
 ```
 
-That installs `home-signal` and wraps `HomeSignalAgent` in an app bundle so it stays out of the Dock. You can also run the built binaries directly.
+That installs `home-signal` into `~/.local/bin` (override with `PREFIX` or `BIN_DIR`) and wraps `HomeSignalAgent` in an app bundle under `~/Applications` so it stays out of the Dock. The script does not use sudo. If that directory is not on `PATH`, it prints the `export` line to add. You can also run the built binaries directly.
 
 ```bash
 HomeSignalAgent            # real devices and macOS UI
@@ -55,17 +55,16 @@ The agent needs these macOS permissions, granted to `HomeSignalAgent` (or the ap
 
 ### HomeKit entitlement
 
-The HomeKit framework is available to Mac Catalyst apps, not to a plain AppKit SwiftPM executable. This repo implements `HomeKitLightBackend` behind `#if canImport(HomeKit)`. A default `swift build` uses the Shortcuts or HTTP backend instead.
+`homekit.backend = "homekit"` only starts when this process is signed with `com.apple.developer.homekit`. Apple issues that entitlement for a Mac Catalyst or iOS app, not for this menu-bar agent or a command-line binary. The agent checks `codesign` at startup and refuses with exit 6 when the entitlement is missing, instead of opening HomeKit and failing later.
 
-To turn on the HomeKit backend:
+The working path on this agent is `shortcuts` or `http`:
 
-1. Create a Mac Catalyst app target that depends on this package.
-2. Add the entitlement `com.apple.developer.homekit`.
-3. Set `NSHomeKitUsageDescription` (the sample plist under `Apps/` has one).
-4. Enable the HomeKit capability on the App ID. Apple has to issue that entitlement for the signing identity.
-5. Set `homekit.backend = "homekit"` in the config.
+```toml
+[homekit]
+backend = "shortcuts"
+```
 
-Until that build exists, use `shortcuts` or `http`.
+`HomeKitLightBackend` remains in the package for a separate Mac Catalyst app that you sign with the entitlement. The sample plist under `Apps/` has `NSHomeKitUsageDescription`. A default `swift build` of this repo does not produce that signed app.
 
 ## Commands
 
@@ -92,6 +91,8 @@ home-signal display html --file ./page.html
 home-signal display clear
 
 home-signal displays
+home-signal mirror list
+home-signal mirror list --discover --debug-ax
 home-signal mirror status --target "TV"
 home-signal mirror connect --target "TV" --mode window
 home-signal mirror disconnect --target "TV"
@@ -240,6 +241,10 @@ Video. `autoplay`, `muted`, and `loop` default to true:
 ```json
 { "type": "video", "src": "https://example.com/example.mp4", "fit": "cover", "autoplay": true, "muted": true, "loop": true }
 ```
+
+`mirror list` prints the Screen Mirroring names Control Center shows. `--discover` also prints AirPlay instance names from `dns-sd -B _airplay._tcp`. `--debug-ax` writes the accessibility tree for each step to stderr, and `--debug-ax-file` writes that same text to a file.
+
+Screen Mirroring is opened from a top-level menu bar item when Control Center has one. Otherwise the agent opens the Control Center menu bar item, finds the Screen Mirroring button or checkbox by identifier or description, and reads the route rows. Names are matched after Unicode normalization (apostrophes, NFC, case, and whitespace). An exact name wins over a copy such as `Example TV (2)`. If the name is missing, the error lists the names that were actually read. If Accessibility or Automation is missing, the command exits 6 with code `permission` instead of a System Events window error.
 
 `mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Showing a page reconnects that target when its screen is not attached. A second show does not reconnect while the screen is still attached.
 

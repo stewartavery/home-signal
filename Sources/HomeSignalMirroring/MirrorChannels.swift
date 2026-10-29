@@ -4,13 +4,14 @@ public actor SimulatedMirror: MirrorChannel {
     private var routes: [String: String] = [:]
     public init() {}
 
-    public func status(target: String) async -> MirrorStatus {
+    public func status(target: String, debugAX: Bool) async -> MirrorStatus {
+        _ = debugAX
         let mode = routes[target]
         return MirrorStatus(target: target, connected: mode != nil, mode: mode, changed: false)
     }
 
-    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
-        _ = deviceID
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        _ = (deviceID, debugAX)
         let mode = try MirrorMode.validate(mode)
         if routes[target] != nil {
             return MirrorStatus(target: target, connected: true, mode: routes[target], changed: false)
@@ -21,12 +22,23 @@ public actor SimulatedMirror: MirrorChannel {
         return MirrorStatus(target: target, connected: true, mode: mode, changed: true)
     }
 
-    public func disconnect(target: String, dryRun: Bool) async -> MirrorStatus {
+    public func disconnect(target: String, dryRun: Bool, debugAX: Bool) async -> MirrorStatus {
+        _ = debugAX
         let existed = routes[target] != nil
         if !dryRun {
             routes[target] = nil
         }
         return MirrorStatus(target: target, connected: false, mode: nil, changed: existed)
+    }
+
+    public func list(discover: Bool, debugAX: Bool) async -> MirrorListResult {
+        let names = routes.keys.sorted()
+        return MirrorListResult(
+            controlCenter: names,
+            discovered: discover ? names : [],
+            routes: names.map { MirrorRoute(name: $0, identifier: "", selected: true) },
+            accessibility: debugAX ? [MirrorAXStep(step: "simulated", tree: "")] : []
+        )
     }
 }
 
@@ -53,46 +65,79 @@ public struct SystemEventsMirror: MirrorChannel {
         self.sleeper = sleeper
     }
 
-    public func status(target: String) async throws -> MirrorStatus {
-        let output = try await osascript(MirrorScript.controlCenter(target: target, deviceID: config.deviceID, action: "status", leaveOpen: false))
-        let connected = output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
-        return MirrorStatus(target: target, connected: connected, mode: connected ? config.mode : nil, changed: false)
+    public func status(target: String, debugAX: Bool) async throws -> MirrorStatus {
+        let found = try await resolve(target: target, deviceID: config.deviceID, debugAX: debugAX, leaveOpen: false)
+        return MirrorStatus(target: target, connected: found.selected, mode: found.selected ? config.mode : nil, changed: false)
     }
 
-    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
         let mode = try MirrorMode.validate(mode)
-        let current = try await status(target: target)
-        if current.connected {
-            return MirrorStatus(target: target, connected: true, mode: current.mode ?? mode, changed: false)
-        }
-        if dryRun {
-            return MirrorStatus(target: target, connected: true, mode: mode, changed: true)
-        }
-        let leaveOpen = mode == MirrorMode.window
         let id = deviceID.isEmpty ? config.deviceID : deviceID
-        let output = try await osascript(MirrorScript.controlCenter(target: target, deviceID: id, action: "connect", leaveOpen: leaveOpen))
-        var points: [Point] = []
-        if leaveOpen {
-            points = try await clickWindowRoute()
-            _ = try await osascript(MirrorScript.closePanel())
+        let opened = try await openRoutes(debugAX: debugAX, leaveOpen: true)
+        do {
+            guard let found = MirrorAX.find(target: target, deviceID: id, in: opened.routes) else {
+                try await closePanel()
+                throw HomeSignalError.airPlayNotFound(
+                    target: target,
+                    seen: opened.routes.map(\.name),
+                    debug: debugAX ? MirrorAXDebug.text(opened.steps) : nil
+                )
+            }
+            if found.selected || dryRun {
+                try await closePanel()
+                return MirrorStatus(target: target, connected: true, mode: mode, changed: !found.selected)
+            }
+            var steps = opened.steps
+            _ = try await run(MirrorScript.clickRoute(found.name), steps: &steps, step: "click-route", debugAX: debugAX)
+            var points: [Point] = []
+            if mode == MirrorMode.window {
+                points = try await clickWindowRoute()
+            }
+            try await closePanel()
+            if config.settleSeconds > 0 {
+                try await sleeper.sleep(milliseconds: Int(config.settleSeconds * 1000))
+            }
+            return MirrorStatus(target: target, connected: true, mode: mode, changed: true, points: points.isEmpty ? nil : points)
+        } catch {
+            try await closePanel()
+            throw error
         }
-        if config.settleSeconds > 0 {
-            try await sleeper.sleep(milliseconds: Int(config.settleSeconds * 1000))
-        }
-        let changed = !output.contains("already-connected")
-        return MirrorStatus(target: target, connected: true, mode: mode, changed: changed, points: points.isEmpty ? nil : points)
     }
 
-    public func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus {
-        let current = try await status(target: target)
-        if !current.connected {
-            return MirrorStatus(target: target, connected: false, changed: false)
-        }
-        if dryRun {
+    public func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        let opened = try await openRoutes(debugAX: debugAX, leaveOpen: true)
+        do {
+            guard let found = MirrorAX.find(target: target, deviceID: config.deviceID, in: opened.routes) else {
+                try await closePanel()
+                throw HomeSignalError.airPlayNotFound(
+                    target: target,
+                    seen: opened.routes.map(\.name),
+                    debug: debugAX ? MirrorAXDebug.text(opened.steps) : nil
+                )
+            }
+            if !found.selected || dryRun {
+                try await closePanel()
+                return MirrorStatus(target: target, connected: false, changed: found.selected && dryRun)
+            }
+            var steps = opened.steps
+            _ = try await run(MirrorScript.clickRoute(found.name), steps: &steps, step: "click-route", debugAX: debugAX)
+            try await closePanel()
             return MirrorStatus(target: target, connected: false, changed: true)
+        } catch {
+            try await closePanel()
+            throw error
         }
-        _ = try await osascript(MirrorScript.controlCenter(target: target, deviceID: config.deviceID, action: "disconnect", leaveOpen: false))
-        return MirrorStatus(target: target, connected: false, changed: true)
+    }
+
+    public func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult {
+        _ = discover
+        let opened = try await openRoutes(debugAX: debugAX, leaveOpen: false)
+        return MirrorListResult(
+            controlCenter: opened.routes.map(\.name),
+            discovered: [],
+            routes: opened.routes,
+            accessibility: debugAX ? opened.steps : []
+        )
     }
 
     private func clickWindowRoute() async throws -> [Point] {
@@ -129,6 +174,96 @@ public struct SystemEventsMirror: MirrorChannel {
         return points
     }
 
+    private func resolve(target: String, deviceID: String, debugAX: Bool, leaveOpen: Bool) async throws -> MirrorRoute {
+        let opened = try await openRoutes(debugAX: debugAX, leaveOpen: leaveOpen)
+        if let match = MirrorAX.find(target: target, deviceID: deviceID, in: opened.routes) {
+            return match
+        }
+        throw HomeSignalError.airPlayNotFound(
+            target: target,
+            seen: opened.routes.map(\.name),
+            debug: debugAX ? MirrorAXDebug.text(opened.steps) : nil
+        )
+    }
+
+    private func openRoutes(debugAX: Bool, leaveOpen: Bool) async throws -> (routes: [MirrorRoute], steps: [MirrorAXStep]) {
+        var steps: [MirrorAXStep] = []
+        do {
+            let menuText = try await run(MirrorScript.dumpMenuBar(), steps: &steps, step: "menubar", debugAX: debugAX)
+            let menu = MirrorAX.parse(menuText)
+            switch MirrorAX.menuBarChoice(menu) {
+            case .screenMirroring(let label):
+                _ = try await run(MirrorScript.clickMenuBar(label), steps: &steps, step: "click-screen-mirroring", debugAX: debugAX)
+            case .controlCenter(let label):
+                _ = try await run(MirrorScript.clickMenuBar(label), steps: &steps, step: "click-control-center", debugAX: debugAX)
+                let windowText = try await run(MirrorScript.dumpWindow(), steps: &steps, step: "window", debugAX: debugAX)
+                let window = MirrorAX.parse(windowText)
+                guard let module = MirrorAX.screenMirroringModule(window) else {
+                    if !leaveOpen {
+                        _ = try? await run(MirrorScript.closePanel(), steps: &steps, step: "close", debugAX: false)
+                    }
+                    throw HomeSignalError.screenMirroringUnavailable(
+                        seen: MirrorAX.labels(window),
+                        debug: debugAX ? MirrorAXDebug.text(steps) : nil
+                    )
+                }
+                let moduleLabel = module.description.isEmpty ? module.title : module.description
+                _ = try await run(
+                    MirrorScript.clickModule(identifier: module.identifier, description: moduleLabel),
+                    steps: &steps,
+                    step: "click-module",
+                    debugAX: debugAX
+                )
+            case .notFound:
+                throw HomeSignalError.screenMirroringUnavailable(
+                    seen: MirrorAX.labels(menu),
+                    debug: debugAX ? MirrorAXDebug.text(steps) : nil
+                )
+            }
+            let routes = try await pollRoutes(&steps, debugAX: debugAX)
+            if !leaveOpen {
+                _ = try? await run(MirrorScript.closePanel(), steps: &steps, step: "close", debugAX: false)
+            }
+            return (routes, steps)
+        } catch {
+            if !leaveOpen {
+                _ = try? await run(MirrorScript.closePanel(), steps: &steps, step: "close", debugAX: false)
+            }
+            throw error
+        }
+    }
+
+    private func pollRoutes(_ steps: inout [MirrorAXStep], debugAX: Bool) async throws -> [MirrorRoute] {
+        let timeoutMs = 8000
+        let poll = 400
+        var waited = 0
+        var last: [MirrorRoute] = []
+        while true {
+            let text = try await run(MirrorScript.dumpRoutes(), steps: &steps, step: "routes", debugAX: debugAX)
+            last = MirrorAX.routes(MirrorAX.parse(text))
+            if !last.isEmpty || waited >= timeoutMs {
+                return last
+            }
+            let step = min(poll, timeoutMs - waited)
+            try await sleeper.sleep(milliseconds: step)
+            waited += step
+        }
+    }
+
+    private func run(_ source: String, steps: inout [MirrorAXStep], step: String, debugAX: Bool) async throws -> String {
+        let output = try await osascript(source)
+        if debugAX || step == "menubar" || step == "window" || step == "routes" {
+            let records = MirrorAX.parse(output)
+            let tree = records.isEmpty ? output : MirrorAX.format(records)
+            steps.append(MirrorAXStep(step: step, tree: tree))
+        }
+        return output
+    }
+
+    private func closePanel() async throws {
+        _ = try? await osascript(MirrorScript.closePanel())
+    }
+
     private func osascript(_ source: String) async throws -> String {
         let output = try await runner.execute(
             launchPath: "/usr/bin/osascript",
@@ -136,17 +271,23 @@ public struct SystemEventsMirror: MirrorChannel {
             input: nil,
             timeoutSeconds: 30
         )
+        let detail = (output.stderrText + "\n" + output.stdoutText).trimmingCharacters(in: .whitespacesAndNewlines)
+        if MirrorAX.permissionProblem(detail) {
+            throw HomeSignalError.permissionDenied(detail)
+        }
         guard output.status == 0 else {
-            let detail = output.stderrText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if detail.contains("not found") {
-                throw HomeSignalError.notFound("AirPlay target", name: config.target)
-            }
             throw HomeSignalError.backend(
                 detail.isEmpty ? "Control Center automation failed." : detail,
-                hint: "Grant Accessibility and Automation permission to the agent."
+                hint: "Grant Accessibility and Automation permission to the agent. Pass --debug-ax to dump the accessibility tree."
             )
         }
         return output.stdoutText
+    }
+}
+
+enum MirrorAXDebug {
+    static func text(_ steps: [MirrorAXStep]) -> String {
+        steps.map { "[\($0.step)]\n\($0.tree)" }.joined(separator: "\n")
     }
 }
 
@@ -159,19 +300,29 @@ public struct FallbackMirror: MirrorChannel {
         self.fallback = fallback
     }
 
-    public func status(target: String) async throws -> MirrorStatus {
-        try await recover { try await primary.status(target: target) } fallback: { try await fallback.status(target: target) }
-    }
-
-    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
-        try await recover { try await primary.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun) } fallback: {
-            try await fallback.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun)
+    public func status(target: String, debugAX: Bool) async throws -> MirrorStatus {
+        try await recover { try await primary.status(target: target, debugAX: debugAX) } fallback: {
+            try await fallback.status(target: target, debugAX: debugAX)
         }
     }
 
-    public func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus {
-        try await recover { try await primary.disconnect(target: target, dryRun: dryRun) } fallback: {
-            try await fallback.disconnect(target: target, dryRun: dryRun)
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        try await recover {
+            try await primary.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun, debugAX: debugAX)
+        } fallback: {
+            try await fallback.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun, debugAX: debugAX)
+        }
+    }
+
+    public func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        try await recover { try await primary.disconnect(target: target, dryRun: dryRun, debugAX: debugAX) } fallback: {
+            try await fallback.disconnect(target: target, dryRun: dryRun, debugAX: debugAX)
+        }
+    }
+
+    public func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult {
+        try await recover { try await primary.list(discover: discover, debugAX: debugAX) } fallback: {
+            try await fallback.list(discover: discover, debugAX: debugAX)
         }
     }
 
@@ -187,17 +338,23 @@ public struct FallbackMirror: MirrorChannel {
 public struct UnavailableNativeMirror: MirrorChannel {
     public init() {}
 
-    public func status(target: String) async throws -> MirrorStatus {
+    public func status(target: String, debugAX: Bool) async throws -> MirrorStatus {
+        _ = (target, debugAX)
         throw HomeSignalError.nativeRouteUnavailable
     }
 
-    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
-        _ = (target, mode, deviceID, dryRun)
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        _ = (target, mode, deviceID, dryRun, debugAX)
         throw HomeSignalError.nativeRouteUnavailable
     }
 
-    public func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus {
-        _ = (target, dryRun)
+    public func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
+        _ = (target, dryRun, debugAX)
+        throw HomeSignalError.nativeRouteUnavailable
+    }
+
+    public func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult {
+        _ = (discover, debugAX)
         throw HomeSignalError.nativeRouteUnavailable
     }
 }

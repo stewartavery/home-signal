@@ -540,22 +540,71 @@ struct MirrorCommand: AsyncParsableCommand {
         commandName: "mirror",
         abstract: "Connect, disconnect, or inspect an AirPlay target by name.",
         discussion: """
-        The agent opens Control Center with System Events, because the route list is not a public headless API. \
-        Window mode then clicks Choose Content, Window or App, and Mirror This Window using fractions of the panel frame \
-        from config. Connecting when the target is already connected does nothing. \
-        --dry-run still opens Control Center to read the checkbox, and does not click the target.
+        The agent reads Screen Mirroring through System Events. If Control Center has a top-level Screen Mirroring \
+        menu bar item, it opens that. Otherwise it opens Control Center, clicks the Screen Mirroring button or checkbox, \
+        and reads the route rows. Names are matched after Unicode normalization. A missing name lists the names that were read. \
+        Missing Accessibility or Automation exits 6. --debug-ax prints the accessibility tree. --discover on list also browses dns-sd. \
+        Window mode then clicks Choose Content, Window or App, and Mirror This Window using fractions from config. \
+        --dry-run reads the route list and does not click the target.
         """,
-        subcommands: [MirrorStatusCommand.self, MirrorConnectCommand.self, MirrorDisconnectCommand.self]
+        subcommands: [MirrorListCommand.self, MirrorStatusCommand.self, MirrorConnectCommand.self, MirrorDisconnectCommand.self]
     )
+}
+
+struct MirrorDebugOptions: ParsableArguments {
+    @Flag(name: .customLong("debug-ax"), help: "Print the accessibility tree from each Screen Mirroring step to stderr.")
+    var debugAX = false
+
+    @Option(name: .customLong("debug-ax-file"), help: "Also write that tree to a file.")
+    var debugAXFile: String?
+}
+
+struct MirrorListCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "list",
+        abstract: "List Screen Mirroring route names.",
+        discussion: "Plain output is one name per line under a heading. --json prints the same names in the envelope. --discover also browses _airplay._tcp with dns-sd. --debug-ax includes the accessibility tree."
+    )
+    @OptionGroup var global: GlobalOptions
+    @OptionGroup var debugOptions: MirrorDebugOptions
+    @Flag(name: .long, help: "Also list AirPlay names from dns-sd.")
+    var discover = false
+
+    func run() async throws {
+        let params = MirrorListParams(discover: discover, debugAX: debugOptions.debugAX || debugOptions.debugAXFile != nil)
+        let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorList, params: try params.jsonValue(), command: "mirror.list")
+        let listed = try result.decode(MirrorListResult.self)
+        if global.json {
+            CLIRuntime.succeed(command: "mirror.list", global: global, value: result)
+        } else {
+            var lines = ["Control Center:"]
+            lines.append(contentsOf: listed.controlCenter.isEmpty ? ["(none)"] : listed.controlCenter)
+            if discover {
+                lines.append("Discovered:")
+                lines.append(contentsOf: listed.discovered.isEmpty ? ["(none)"] : listed.discovered)
+            }
+            CLIRuntime.hooks.sink.writeOut(lines.joined(separator: "\n") + "\n")
+        }
+        try writeAX(listed.accessibility, debug: debugOptions)
+    }
 }
 
 struct MirrorStatusCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "status", abstract: "Read whether the target is selected.")
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var debugOptions: MirrorDebugOptions
     @Option(name: .long, help: "AirPlay name. Defaults to mirror.target in config.") var target: String?
     func run() async throws {
         let name = try target ?? CLIRuntime.load(global).mirror.target
-        try await IPCCall.perform(global: global, command: "mirror.status", method: IPCMethod.mirrorStatus, params: try MirrorTargetParams(target: name).jsonValue())
+        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
+        let result = try await mirrorSend(
+            global: global,
+            debug: debugOptions,
+            method: IPCMethod.mirrorStatus,
+            params: try MirrorTargetParams(target: name, debugAX: debug).jsonValue(),
+            command: "mirror.status"
+        )
+        CLIRuntime.succeed(command: "mirror.status", global: global, value: result)
     }
 }
 
@@ -566,17 +615,21 @@ struct MirrorConnectCommand: AsyncParsableCommand {
         discussion: "mode is window (the signal window) or display (the whole screen). Already-connected targets return changed: false."
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var debugOptions: MirrorDebugOptions
     @Option(name: .long, help: "AirPlay name. Defaults to config.") var target: String?
     @Option(name: .customLong("device-id"), help: "AirPlay id. Defaults to mirror.device_id. Empty matches by name.") var deviceID: String?
     @Option(name: .long, help: "window or display. Defaults to config.") var mode: String?
     func run() async throws {
         let config = try CLIRuntime.load(global)
+        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
         let params = MirrorConnectParams(
             target: target ?? config.mirror.target,
             mode: mode ?? config.mirror.mode,
-            deviceID: deviceID ?? config.mirror.deviceID
+            deviceID: deviceID ?? config.mirror.deviceID,
+            debugAX: debug
         )
-        try await IPCCall.perform(global: global, command: "mirror.connect", method: IPCMethod.mirrorConnect, params: try params.jsonValue())
+        let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorConnect, params: try params.jsonValue(), command: "mirror.connect")
+        CLIRuntime.succeed(command: "mirror.connect", global: global, value: result)
     }
 }
 
@@ -587,10 +640,45 @@ struct MirrorDisconnectCommand: AsyncParsableCommand {
         discussion: "Disconnecting when the target is already off returns changed: false."
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var debugOptions: MirrorDebugOptions
     @Option(name: .long, help: "AirPlay name. Defaults to config.") var target: String?
     func run() async throws {
         let name = try target ?? CLIRuntime.load(global).mirror.target
-        try await IPCCall.perform(global: global, command: "mirror.disconnect", method: IPCMethod.mirrorDisconnect, params: try MirrorTargetParams(target: name).jsonValue())
+        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
+        let result = try await mirrorSend(
+            global: global,
+            debug: debugOptions,
+            method: IPCMethod.mirrorDisconnect,
+            params: try MirrorTargetParams(target: name, debugAX: debug).jsonValue(),
+            command: "mirror.disconnect"
+        )
+        CLIRuntime.succeed(command: "mirror.disconnect", global: global, value: result)
+    }
+}
+
+private func mirrorSend(global: GlobalOptions, debug: MirrorDebugOptions, method: String, params: JSONValue, command: String) async throws -> JSONValue {
+    do {
+        return try await IPCCall.send(global: global, method: method, params: params)
+    } catch let error as HomeSignalError {
+        try writeAXText(String(describing: error), debug: debug)
+        throw error
+    }
+}
+
+private func writeAX(_ steps: [MirrorAXStep], debug: MirrorDebugOptions) throws {
+    guard debug.debugAX || debug.debugAXFile != nil else { return }
+    let text = steps.map { "[\($0.step)]\n\($0.tree)" }.joined(separator: "\n")
+    try writeAXText(text, debug: debug)
+}
+
+private func writeAXText(_ text: String, debug: MirrorDebugOptions) throws {
+    guard !text.isEmpty else { return }
+    if debug.debugAX {
+        CLIRuntime.hooks.sink.writeErr(text.hasSuffix("\n") ? text : text + "\n")
+    }
+    if let path = debug.debugAXFile {
+        let file = HomeSignalPaths.expand(path)
+        try Data(text.utf8).write(to: URL(fileURLWithPath: file))
     }
 }
 
@@ -705,9 +793,10 @@ enum CommandCatalog {
         CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify it on the target display.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present", "target", "device-id"]),
         CommandSpec(name: "display clear", summary: "Hide the signal window and release the wake assertion.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
         CommandSpec(name: "display status", summary: "Current signal document.", mutating: false, idempotent: true, arguments: [], options: []),
-        CommandSpec(name: "mirror status", summary: "Whether an AirPlay target is selected.", mutating: false, idempotent: true, arguments: [], options: ["target"]),
-        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "device-id", "mode"]),
-        CommandSpec(name: "mirror disconnect", summary: "Stop mirroring to a target.", mutating: true, idempotent: true, arguments: [], options: ["target"]),
+        CommandSpec(name: "mirror list", summary: "List Screen Mirroring route names.", mutating: false, idempotent: true, arguments: [], options: ["discover", "debug-ax", "debug-ax-file"]),
+        CommandSpec(name: "mirror status", summary: "Whether an AirPlay target is selected.", mutating: false, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file"]),
+        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "device-id", "mode", "debug-ax", "debug-ax-file"]),
+        CommandSpec(name: "mirror disconnect", summary: "Stop mirroring to a target.", mutating: true, idempotent: true, arguments: [], options: ["target", "debug-ax", "debug-ax-file"]),
         CommandSpec(name: "input click", summary: "Click.", mutating: true, idempotent: true, arguments: ["x", "y"], options: ["button", "clicks"]),
         CommandSpec(name: "input move", summary: "Move the pointer.", mutating: true, idempotent: true, arguments: ["x", "y"], options: []),
         CommandSpec(name: "input scroll", summary: "Scroll.", mutating: true, idempotent: false, arguments: ["x", "y"], options: ["delta", "axis"]),
