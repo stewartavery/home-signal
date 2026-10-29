@@ -231,6 +231,29 @@ Video. `autoplay`, `muted`, and `loop` default to true:
 { "type": "video", "src": "https://example.com/example.mp4", "fit": "cover", "autoplay": true, "muted": true, "loop": true }
 ```
 
+## Display proof
+
+Layout changes can be checked without a display. `display proof export` reads `Fixtures/DisplayProof/catalog.json`, renders each spec to self-contained HTML, and writes `manifest.json` with the SHA-256 of those bytes. It does not start the agent and it does not show a page. An empty or invalid spec is an error and writes nothing.
+
+Proof HTML embeds WOFF2 faces (no system font stack), locks the stage to 1920×1080, disables animation, transitions, and the caret, and sets `data-hs-ready` after text fit. The browser suite checks that the stage is 1920×1080, modules fill the grid, nothing overflows, the grid gap is `--space-l`, and the page margin is `--space-xl`.
+
+Goldens are Linux Chromium screenshots from the pinned image in `VisualProof/playwright-image.txt` (`mcr.microsoft.com/playwright` v1.64.1 noble, linux/amd64). Regenerate them only in that container. Do not record against a host browser or a real display.
+
+```bash
+scripts/display-proof.sh verify
+scripts/display-proof.sh record   # container-only --update-snapshots=changed
+scripts/display-proof.sh export   # rewrite HTML and manifest.json from the catalog
+```
+
+`verify` runs `swift test`, then Playwright in the pinned image. `record` exports fixtures and updates changed screenshots in that same image.
+
+On a Mac, the same scripts record the Linux goldens through Docker. They do not capture the Mac display. An optional WKWebView smoke uses Point-Free swift-snapshot-testing (`takeSnapshot`, `afterScreenUpdates` false, a real window, after load). It is skipped unless you ask for it, including on Linux. Darwin baselines live in `Fixtures/DisplayProof/screenshots/darwin` and are never compared to the Linux goldens.
+
+```bash
+HS_MAC_PROOF=record swift test --filter DisplayProofMacSmokeTests
+HS_MAC_PROOF=1 swift test --filter DisplayProofMacSmokeTests
+```
+
 `mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Updating the signal window does not reconnect AirPlay.
 
 `--dry-run` on `mirror connect` still opens Control Center to read the checkbox. It does not click the target or the window-mode points.

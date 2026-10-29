@@ -62,10 +62,22 @@ public enum DisplayLayout {
         return try render(page: page, theme: theme, baseDirectory: baseDirectory)
     }
 
-    public static func render(page: DisplayPage, theme: DisplayTheme, baseDirectory: String? = nil) throws -> String {
+    public static func render(page: DisplayPage, theme: DisplayTheme, baseDirectory: String? = nil, proofCSS: String? = nil) throws -> String {
         let modules = try page.blocks.map { try DisplayModuleHTML.render($0, baseDirectory: baseDirectory) }.joined()
         let title = DisplayRendering.escape(page.title)
         let names = DisplayTypeToken.allCases.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
+        if let proofCSS {
+            return """
+            <!doctype html><html data-hs-proof="1"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>\(title)</title><style>
+            \(DisplayTokens.rootCSS())
+            \(layoutCSS)
+            \(theme.css())
+            \(proofCSS)
+            </style></head><body><div class="stage" data-theme="\(DisplayRendering.escape(theme.id))"><div class="page">\(modules)</div></div><script>
+            \(proofFitScript(names))
+            </script></body></html>
+            """
+        }
         return """
         <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>\(title)</title><style>
         \(DisplayTokens.rootCSS())
@@ -186,6 +198,48 @@ public enum DisplayLayout {
         fit();
         requestAnimationFrame(fit);
         window.addEventListener("resize",fit);
+        })();
+        """
+    }
+
+    private static func proofFitScript(_ names: String) -> String {
+        """
+        (function(){
+        var names=[\(names)];
+        function stepSize(name){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--type-"+name))}
+        function overflows(el){
+          if(el.clientHeight<1||el.clientWidth<1) return false;
+          var nodes=el.querySelectorAll(".inner");
+          for(var i=0;i<nodes.length;i++){
+            var box=nodes[i].parentElement;
+            if(!box||box.clientHeight<1) continue;
+            if(nodes[i].scrollHeight>box.clientHeight+1||nodes[i].scrollWidth>box.clientWidth+1) return true;
+          }
+          return false;
+        }
+        function fit(){
+          var nodes=document.querySelectorAll("[data-fit]");
+          for(var i=0;i<nodes.length;i++){
+            var el=nodes[i];
+            if(!overflows(el)) continue;
+            var max=names.indexOf(el.getAttribute("data-fit"));
+            if(max<0) max=names.length-1;
+            for(var step=max; step>=0; step--){
+              var size=stepSize(names[step]);
+              if(!size) continue;
+              el.style.fontSize=size+"px";
+              if(!overflows(el)) break;
+            }
+          }
+        }
+        function finish(){
+          fit();
+          requestAnimationFrame(function(){
+            fit();
+            document.documentElement.setAttribute("data-hs-ready","1");
+          });
+        }
+        if(document.fonts&&document.fonts.ready){document.fonts.ready.then(finish);}else{finish();}
         })();
         """
     }

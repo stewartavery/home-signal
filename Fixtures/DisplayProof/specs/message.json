@@ -1,0 +1,10 @@
+{
+  "title": "Reminder",
+  "theme": "default",
+  "modules": [
+    {
+      "type": "message",
+      "text": "Example reminder"
+    }
+  ]
+}

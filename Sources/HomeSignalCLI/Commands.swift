@@ -309,7 +309,7 @@ struct DisplayCommand: AsyncParsableCommand {
         commandName: "display",
         abstract: "Show a message, schedule, layout, or HTML page on the agent's full-screen window.",
         discussion: "Updating the window does not reconnect AirPlay. A show with no content fails and leaves the current page in place. `display layout` renders a JSON module spec into the 16:9 canvas. `display html` loads caller HTML unchanged. The JSON result includes the content hash and title read back from the window.",
-        subcommands: [DisplayMessage.self, DisplaySchedule.self, DisplayLayoutCommand.self, DisplayHTML.self, DisplayClear.self, DisplayStatus.self]
+        subcommands: [DisplayMessage.self, DisplaySchedule.self, DisplayLayoutCommand.self, DisplayProofCommand.self, DisplayHTML.self, DisplayClear.self, DisplayStatus.self]
     )
 }
 
@@ -422,6 +422,81 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
             return (text, base)
         }
         throw HomeSignalError.displayRefusal("display layout needs --file or --spec.")
+    }
+}
+
+struct DisplayProofCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "proof",
+        abstract: "Export layout fixtures for visual proof. Does not show a page.",
+        discussion: "Proof export renders JSON to self-contained HTML and writes content hashes. It does not talk to HomeSignalAgent and it does not use a display.",
+        subcommands: [DisplayProofExport.self]
+    )
+}
+
+struct DisplayProofExport: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "export",
+        abstract: "Write self-contained proof HTML and a manifest of content hashes.",
+        discussion: """
+        With no --file or --spec, read catalog.json in --out and write one HTML file per fixture plus manifest.json. \
+        Pass --file or --spec with --name to export a single spec into --out. \
+        This command never shows a display and never substitutes a default page. \
+        An empty or invalid spec is an error and writes nothing. \
+        Screenshot goldens are recorded only in the pinned Playwright container, not from this command.
+        """
+    )
+    @OptionGroup var global: GlobalOptions
+    @Option(name: .long, help: "Output directory. Catalog export reads catalog.json here.") var out: String
+    @Option(name: .long, help: "UTF-8 JSON spec file. Requires --name.") var file: String?
+    @Option(name: .long, help: "JSON spec. Requires --name.") var spec: String?
+    @Option(name: .long, help: "Fixture name for a single spec.") var name: String?
+    @Option(name: .long, help: "Theme id. Overrides the spec. Single-spec export only.") var theme: String?
+    @Flag(name: .long, help: "Draw a 1px accent outline on each module. Single-spec export only.") var outline = false
+
+    func run() throws {
+        let directory = URL(fileURLWithPath: HomeSignalPaths.expand(out), isDirectory: true)
+        let manifest: DisplayProofManifest
+        if file != nil || spec != nil {
+            guard let name else {
+                throw HomeSignalError.usage("display proof export needs --name with --file or --spec.")
+            }
+            if file != nil && spec != nil {
+                throw HomeSignalError.usage("Pass only one of --file or --spec.")
+            }
+            let json = try loadJSON()
+            manifest = try DisplayProof.exportSpec(json: json, name: name, theme: theme, outline: outline, to: directory)
+        } else {
+            if name != nil || theme != nil || outline {
+                throw HomeSignalError.usage("Catalog export reads themes and outlines from catalog.json. Pass --file or --spec to export one spec.")
+            }
+            manifest = try DisplayProof.exportCatalog(in: directory)
+        }
+        CLIRuntime.succeed(command: "display.proof.export", global: global, value: try manifest.jsonValue())
+    }
+
+    private func loadJSON() throws -> String {
+        if let spec {
+            guard !spec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("Layout spec is empty.")
+            }
+            return spec
+        }
+        if let file {
+            let path = HomeSignalPaths.expand(file)
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw HomeSignalError.displayRefusal("Layout file not found: \(path).")
+            }
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw HomeSignalError.displayRefusal("Layout file must be UTF-8: \(path).")
+            }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("Layout file is empty.")
+            }
+            return text
+        }
+        throw HomeSignalError.displayRefusal("display proof export needs --file or --spec.")
     }
 }
 
@@ -647,6 +722,7 @@ enum CommandCatalog {
         CommandSpec(name: "display message", summary: "Show text on the signal window. Empty text is an error.", mutating: true, idempotent: true, arguments: ["text"], options: ["title", "no-present"]),
         CommandSpec(name: "display schedule", summary: "Show a title and time/label rows.", mutating: true, idempotent: true, arguments: [], options: ["title", "row", "rows-json", "no-present"]),
         CommandSpec(name: "display layout", summary: "Render a JSON module spec on the 16:9 canvas and verify the read-back. Empty or invalid specs are an error.", mutating: true, idempotent: true, arguments: [], options: ["file", "spec", "theme", "no-present"]),
+        CommandSpec(name: "display proof export", summary: "Write self-contained layout proof HTML and content hashes. Does not show a page.", mutating: false, idempotent: true, arguments: [], options: ["out", "file", "spec", "name", "theme", "outline"]),
         CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify the read-back hash.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present"]),
         CommandSpec(name: "display clear", summary: "Show an empty page.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
         CommandSpec(name: "display status", summary: "Current signal document.", mutating: false, idempotent: true, arguments: [], options: []),

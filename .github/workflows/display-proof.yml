@@ -1,0 +1,116 @@
+name: Display proof
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  swift:
+    name: Swift tests
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.2.4@sha256:e508ef1e4be68087f720de622b91cbf1e32799a7aa96134b35e6f1a1d656db7a
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: swift test
+
+  chromium:
+    name: Layout and screenshots
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify in the pinned Playwright image
+        run: |
+          image=$(tr -d '[:space:]' < VisualProof/playwright-image.txt)
+          docker run --rm \
+            --platform linux/amd64 \
+            -v "$PWD:/work" \
+            -w /work/VisualProof \
+            -e HS_PROOF_CONTAINER=1 \
+            -e TZ=UTC \
+            -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+            "$image" \
+            bash -lc 'npm ci && npx playwright test'
+      - name: Upload expected, actual, and diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: display-proof
+          if-no-files-found: ignore
+          path: |
+            Fixtures/DisplayProof/screenshots
+            VisualProof/test-results
+
+  gallery:
+    name: Proof gallery comment
+    needs: chromium
+    if: always() && github.event_name == 'pull_request' && needs.chromium.result != 'cancelled' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post or update the proof gallery
+        uses: actions/github-script@v7
+        env:
+          PROOF_RESULT: ${{ needs.chromium.result }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- home-signal-display-proof -->';
+            const head = context.payload.pull_request && context.payload.pull_request.head && context.payload.pull_request.head.repo && context.payload.pull_request.head.repo.full_name;
+            const base = `${context.repo.owner}/${context.repo.repo}`;
+            if (head !== base) {
+              core.notice('Skipping the proof gallery comment on a fork pull request.');
+              return;
+            }
+            const manifest = JSON.parse(fs.readFileSync('Fixtures/DisplayProof/manifest.json', 'utf8'));
+            const sha = context.payload.pull_request.head.sha;
+            const lines = manifest.fixtures.map((fixture) => {
+              const rel = `Fixtures/DisplayProof/screenshots/linux/${fixture.name}.png`;
+              const alt = `${fixture.name} (${fixture.theme}, ${fixture.modules} modules)`;
+              if (!fs.existsSync(rel)) {
+                return `### ${fixture.name}\n\nScreenshot not in this commit.`;
+              }
+              const url = `https://raw.githubusercontent.com/${base}/${sha}/${rel}`;
+              return `### ${fixture.name}\n\n${fixture.theme} · ${fixture.modules} modules · \`${fixture.contentHash.slice(0, 12)}\`\n\n<img alt="${alt}" src="${url}" width="720" />`;
+            });
+            const run = `${context.serverUrl}/${base}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              `Display proof (${process.env.PROOF_RESULT}) for \`${sha.slice(0, 7)}\`.`,
+              '',
+              'Linux Chromium goldens from the pinned Playwright image. Expected, actual, and diff images are in the `display-proof` artifact on the workflow run when a comparison fails.',
+              '',
+              `[Workflow run](${run})`,
+              '',
+              lines.join('\n\n'),
+              '',
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => (comment.body || '').includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

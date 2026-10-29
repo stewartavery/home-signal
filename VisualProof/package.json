@@ -1,0 +1,11 @@
+{
+  "name": "home-signal-display-proof",
+  "private": true,
+  "description": "Layout checks and screenshots for display proof fixtures.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}

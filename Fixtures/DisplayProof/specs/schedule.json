@@ -1,0 +1,48 @@
+{
+  "title": "Example day",
+  "theme": "moonlit-autumn",
+  "modules": [
+    {
+      "type": "header",
+      "title": "Example day",
+      "subtitle": "Placeholder"
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "title": "Morning",
+          "items": [
+            {
+              "leading": "09:00",
+              "text": "Example item"
+            },
+            {
+              "leading": "10:30",
+              "text": "Example item"
+            }
+          ]
+        },
+        {
+          "title": "Afternoon",
+          "items": [
+            {
+              "leading": "13:00",
+              "text": "Example meeting"
+            },
+            {
+              "leading": "16:00",
+              "text": "Example item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "summary",
+      "label": "Next",
+      "value": "Example item",
+      "detail": "09:00"
+    }
+  ]
+}

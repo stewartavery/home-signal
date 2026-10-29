@@ -1,0 +1,16 @@
+{
+  "title": "Pair",
+  "theme": "default",
+  "modules": [
+    {
+      "type": "message",
+      "text": "Example reminder"
+    },
+    {
+      "type": "summary",
+      "label": "Next",
+      "value": "Example item",
+      "detail": "09:00"
+    }
+  ]
+}

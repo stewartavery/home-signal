@@ -13,9 +13,15 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1"),
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.7"),
     ],
     targets: [
-        .target(name: "HomeSignalCore"),
+        .target(
+            name: "HomeSignalCore",
+            resources: [
+                .copy("ProofFonts"),
+            ]
+        ),
         .target(name: "HomeSignalKit", dependencies: ["HomeSignalCore"]),
         .target(name: "HomeSignalLights", dependencies: ["HomeSignalCore"]),
         .target(name: "HomeSignalDisplay", dependencies: ["HomeSignalCore"]),
@@ -54,6 +60,7 @@ let package = Package(
                 "HomeSignalInput",
                 "HomeSignalCapture",
                 "HomeSignalCLI",
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing", condition: .when(platforms: [.macOS])),
             ]
         ),
     ]
