@@ -1,7 +1,7 @@
 import Foundation
 import HomeSignalCore
 
-public struct RouteCandidate: Sendable, Equatable {
+public struct RouteCandidate: Sendable, Equatable, Codable {
     public var name: String
     public var identifier: String
     public var video: Bool
@@ -19,17 +19,21 @@ public struct RouteCandidate: Sendable, Equatable {
     }
 }
 
-public struct RouteSnapshot: Sendable, Equatable {
+public struct RouteSnapshot: Sendable, Equatable, Codable {
     public var classes: [String: Bool]
     public var selectors: [String: Bool]
+    public var encodings: [String: String]
+    public var called: [String: Bool]
     public var devices: [RouteCandidate]
     public var screenContext: Bool
     public var featuresKnown: Bool
     public var note: String
 
-    public init(classes: [String: Bool], selectors: [String: Bool], devices: [RouteCandidate], screenContext: Bool, featuresKnown: Bool, note: String) {
+    public init(classes: [String: Bool], selectors: [String: Bool], devices: [RouteCandidate], screenContext: Bool, featuresKnown: Bool, note: String, encodings: [String: String] = [:], called: [String: Bool] = [:]) {
         self.classes = classes
         self.selectors = selectors
+        self.encodings = encodings
+        self.called = called
         self.devices = devices
         self.screenContext = screenContext
         self.featuresKnown = featuresKnown
@@ -90,6 +94,55 @@ public enum SessionLockText {
     }
 }
 
+public struct ProbeReport: Sendable, Equatable, Codable {
+    public var snapshot: RouteSnapshot
+    public var error: String?
+
+    public init(snapshot: RouteSnapshot, error: String?) {
+        self.snapshot = snapshot
+        self.error = error
+    }
+}
+
+public enum ObjCReturn {
+    public static func returnsObject(_ encoding: String) -> Bool {
+        firstType(encoding) == "@"
+    }
+
+    public static func returnsBool(_ encoding: String) -> Bool {
+        guard let type = firstType(encoding) else { return false }
+        return type == "B" || type == "c" || type == "C"
+    }
+
+    public static func returnsVoid(_ encoding: String) -> Bool {
+        firstType(encoding) == "v"
+    }
+
+    private static func firstType(_ encoding: String) -> Character? {
+        let qualifiers: Set<Character> = ["r", "n", "N", "o", "O", "R", "V"]
+        return encoding.first { !qualifiers.contains($0) }
+    }
+}
+
+public enum ProbeOutput {
+    public static func interpret(status: Int32, signaled: Bool, stdout: Data, stderr: String) -> ProbeReport {
+        if !signaled, let report = try? JSONDecoder().decode(ProbeReport.self, from: stdout) {
+            return report
+        }
+        let detail: String
+        if signaled {
+            detail = "home-signal-probe crashed with signal \(status). The agent stayed up."
+        } else {
+            let extra = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            detail = extra.isEmpty ? "home-signal-probe exited \(status) without a route report." : "home-signal-probe exited \(status). \(extra)"
+        }
+        return ProbeReport(
+            snapshot: RouteSnapshot(classes: [:], selectors: [:], devices: [], screenContext: false, featuresKnown: false, note: detail),
+            error: detail
+        )
+    }
+}
+
 public enum RouteSelection {
     public static func choose(_ snapshot: RouteSnapshot) -> [RouteCandidate] {
         let pool = snapshot.devices.filter { !$0.local && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -109,7 +162,9 @@ public enum RouteSelection {
             lines.append("class \(name)=\(snapshot.classes[name] == true ? "yes" : "no")")
         }
         for name in snapshot.selectors.keys.sorted() {
-            lines.append("selector \(name)=\(snapshot.selectors[name] == true ? "yes" : "no")")
+            let encoding = snapshot.encodings[name] ?? ""
+            let called = snapshot.called[name] == true ? "yes" : "no"
+            lines.append("selector \(name)=\(snapshot.selectors[name] == true ? "yes" : "no") encoding=\(encoding) called=\(called)")
         }
         for device in snapshot.devices {
             lines.append("device name=\(device.name) id=\(device.identifier) video=\(device.video) screen=\(device.screen) local=\(device.local) selected=\(device.selected)")

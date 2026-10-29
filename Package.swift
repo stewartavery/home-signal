@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .executable(name: "home-signal", targets: ["home-signal"]),
         .executable(name: "HomeSignalAgent", targets: ["HomeSignalAgent"]),
+        .executable(name: "home-signal-probe", targets: ["home-signal-probe"]),
         .library(name: "HomeSignalCore", targets: ["HomeSignalCore"]),
         .library(name: "HomeSignalKit", targets: ["HomeSignalKit"]),
     ],
@@ -43,6 +44,7 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "home-signal", dependencies: ["HomeSignalCLI"]),
+        .executableTarget(name: "home-signal-probe", dependencies: ["HomeSignalMirroring"]),
         .executableTarget(
             name: "HomeSignalAgent",
             dependencies: [

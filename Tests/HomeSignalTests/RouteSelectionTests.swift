@@ -36,6 +36,47 @@ final class RouteSelectionTests: XCTestCase {
         XCTAssertEqual(RouteSelection.choose(snapshot).map(\.name), ["Example Speaker"])
     }
 
+    func testObjectReturnEncodingSkipsNonObjects() {
+        XCTAssertTrue(ObjCReturn.returnsObject("@16@0:8"))
+        XCTAssertTrue(ObjCReturn.returnsObject("@@:"))
+        XCTAssertTrue(ObjCReturn.returnsObject("r@16@0:8"))
+        XCTAssertFalse(ObjCReturn.returnsObject("v16@0:8"))
+        XCTAssertFalse(ObjCReturn.returnsObject("#16@0:8"))
+        XCTAssertFalse(ObjCReturn.returnsObject("^{__CFString=}16@0:8"))
+        XCTAssertFalse(ObjCReturn.returnsObject(""))
+        XCTAssertTrue(ObjCReturn.returnsVoid("v16@0:8"))
+        XCTAssertTrue(ObjCReturn.returnsBool("B16@0:8"))
+        XCTAssertTrue(ObjCReturn.returnsBool("c16@0:8"))
+    }
+
+    func testProbeCrashBecomesAnErrorInsteadOfKillingTheAgent() throws {
+        let report = ProbeOutput.interpret(status: 11, signaled: true, stdout: Data(), stderr: "")
+        XCTAssertTrue(report.snapshot.note.contains("signal 11"))
+        XCTAssertTrue(report.snapshot.note.contains("agent stayed up"))
+        XCTAssertEqual(report.error, report.snapshot.note)
+        XCTAssertFalse(report.snapshot.loaded)
+        let ok = ProbeReport(
+            snapshot: RouteSnapshot(
+                classes: ["AVOutputContext": true],
+                selectors: ["AVOutputContext.sharedSystemScreenContext": true],
+                devices: [],
+                screenContext: false,
+                featuresKnown: false,
+                note: "No screen-mirroring context was found.",
+                encodings: ["AVOutputContext.sharedSystemScreenContext": "@16@0:8"],
+                called: ["AVOutputContext.sharedSystemScreenContext": false]
+            ),
+            error: nil
+        )
+        let data = try JSONEncoder().encode(ok)
+        let decoded = ProbeOutput.interpret(status: 0, signaled: false, stdout: data, stderr: "")
+        XCTAssertEqual(decoded.snapshot.classes["AVOutputContext"], true)
+        XCTAssertEqual(decoded.snapshot.encodings["AVOutputContext.sharedSystemScreenContext"], "@16@0:8")
+        let text = RouteSelection.debugText(decoded.snapshot)
+        XCTAssertTrue(text.contains("encoding=@16@0:8"))
+        XCTAssertTrue(text.contains("called=no"))
+    }
+
     func testDebugTextListsClassesSelectorsAndDevices() {
         let text = RouteSelection.debugText(sample(devices: [candidate("Example TV", identifier: "example-1", screen: true)], screen: false, known: true))
         XCTAssertTrue(text.contains("class AVOutputContext=yes"))
