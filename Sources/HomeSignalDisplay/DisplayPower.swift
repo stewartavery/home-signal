@@ -11,52 +11,60 @@ public final class IOKitDisplayPower: DisplayPowerControlling, @unchecked Sendab
     public init() {}
 
     public func wakeAndHold(reason: String) async throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if held { return }
-        // DeclareUserActivity wakes a sleeping display. The assertion keeps it awake until release.
-        var activity = IOPMAssertionID(0)
-        let activityResult = IOPMAssertionDeclareUserActivity(
-            reason as CFString,
-            kIOPMUserActiveLocal,
-            &activity
-        )
-        guard activityResult == kIOReturnSuccess else {
-            throw HomeSignalError.displayStep("wake", "Could not wake the display (IOReturn \(activityResult)).")
+        let failure: HomeSignalError? = try locked {
+            if held { return nil }
+            // DeclareUserActivity wakes a sleeping display. The assertion keeps it awake until release.
+            var activity = IOPMAssertionID(0)
+            let activityResult = IOPMAssertionDeclareUserActivity(
+                reason as CFString,
+                kIOPMUserActiveLocal,
+                &activity
+            )
+            guard activityResult == kIOReturnSuccess else {
+                return HomeSignalError.displayStep("wake", "Could not wake the display (IOReturn \(activityResult)).")
+            }
+            var created = IOPMAssertionID(0)
+            let result = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                reason as CFString,
+                &created
+            )
+            guard result == kIOReturnSuccess else {
+                return HomeSignalError.displayStep("wake", "Could not hold a display-wake assertion (IOReturn \(result)).")
+            }
+            assertion = created
+            held = true
+            return nil
         }
-        var created = IOPMAssertionID(0)
-        let result = IOPMAssertionCreateWithName(
-            kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
-            IOPMAssertionLevel(kIOPMAssertionLevelOn),
-            reason as CFString,
-            &created
-        )
-        guard result == kIOReturnSuccess else {
-            throw HomeSignalError.displayStep("wake", "Could not hold a display-wake assertion (IOReturn \(result)).")
+        if let failure {
+            throw failure
         }
-        assertion = created
-        held = true
     }
 
     public func release() async {
-        lock.lock()
-        defer { lock.unlock() }
-        guard held else { return }
-        _ = IOPMAssertionRelease(assertion)
-        held = false
-        assertion = 0
+        locked {
+            guard held else { return }
+            _ = IOPMAssertionRelease(assertion)
+            held = false
+            assertion = 0
+        }
     }
 
     public func isHolding() async -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return held
+        locked { held }
     }
 
     deinit {
         if held {
             _ = IOPMAssertionRelease(assertion)
         }
+    }
+
+    private func locked<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
     }
 }
 #endif
