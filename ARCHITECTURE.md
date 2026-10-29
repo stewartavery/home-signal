@@ -64,7 +64,7 @@ HomeKit writes numeric characteristics and converts color temperature between Ke
 
 ## Display layout
 
-`DisplayTokens` is the type and space scale (vh). `DisplayThemes` is color and font. `DisplayLayout` paints a 16:9 stage, a grid of blocks (`gap` is `--space-l`, each block `flex: 1`), and the module markup. Modules are `header`, `message`, `columns`, `list`, `summary`, and `alert`. Text uses a type token and steps down that scale when the block would overflow.
+`DisplayTokens` is the type and space scale (vh). `DisplayThemes` is color and font. `DisplayLayout` paints a 16:9 stage, a grid of blocks (`gap` is `--space-l`, each block `flex: 1`), and the module markup. Modules are `header`, `message`, `columns`, `list`, `summary`, `alert`, `html`, `image`, and `video`. Text uses a type token and steps down that scale when the block would overflow. Caller HTML is framed in its slot. Local image and video paths are embedded as data URLs at render time.
 
 Add a theme by appending a `DisplayTheme` to `DisplayThemes.all`. Add a module by extending `DisplayModuleKind`, validation in the spec parser, and `DisplayModuleHTML`. Layout CSS reads tokens and theme variables. It does not name a theme.
 

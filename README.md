@@ -139,6 +139,17 @@ Default primary sizes: header title `xl`, message `xxl`, column items `s`, list 
 | `list` | `items` | `title`, `size` |
 | `summary` | `label`, `value` | `detail`, `size` |
 | `alert` | `text` | `title`, `level` (`info`, `warning`, `critical`), `size` |
+| `html` | `html` | |
+| `image` | `src` | `fit` (`contain` or `cover`, default `contain`), `caption` |
+| `video` | `src` | `fit` (`contain` or `cover`, default `contain`), `caption`, `autoplay`, `muted`, `loop` |
+
+`html`, `image`, and `video` fill one grid slot the same way as the other blocks (`flex: 1`, the page gap, and the stage margin). The slot clips its content. An empty `html` or `src` is an error.
+
+`html` places the string in that slot as its own document. The markup is not sanitized or rewritten. Styles and tags inside it stay in the slot.
+
+`src` may be an `http`, `https`, or `data` URL. A local path or `file` URL is embedded as a data URL so the signal window can load it without a separate server. Image files: png, jpeg, gif, webp, svg, bmp, avif. Video files: mp4, webm, ogg, mov. A missing file, an empty file, or an unknown type is an error. Paths in a spec file are relative to that file. Paths in `--spec` are relative to the current directory.
+
+Video defaults are `autoplay`, `muted`, and `loop`. Set any of them to `false` to override that one flag. The video stays inline in the slot.
 
 An item is an object with `text` and optional `leading`, or a string used as `text`. `title` on the spec is the document title. The read-back compares it to the window title. It is not drawn unless a module includes it.
 
@@ -198,6 +209,24 @@ Multi-section schedule:
     }
   ]
 }
+```
+
+Caller HTML in a slot:
+
+```json
+{ "type": "html", "html": "<p>Example notice</p>" }
+```
+
+Image, with an optional caption. `fit` defaults to `contain`:
+
+```json
+{ "type": "image", "src": "https://example.com/example.png", "fit": "contain", "caption": "Example" }
+```
+
+Video. `autoplay`, `muted`, and `loop` default to true:
+
+```json
+{ "type": "video", "src": "https://example.com/example.mp4", "fit": "cover", "autoplay": true, "muted": true, "loop": true }
 ```
 
 `mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Updating the signal window does not reconnect AirPlay.

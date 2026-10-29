@@ -53,17 +53,17 @@ public enum DisplayLayout {
     }
     """
 
-    public static func render(json: String, theme themeOverride: String? = nil) throws -> String {
-        try render(page: try page(json: json, theme: themeOverride))
+    public static func render(json: String, theme themeOverride: String? = nil, baseDirectory: String? = nil) throws -> String {
+        try render(page: try page(json: json, theme: themeOverride), baseDirectory: baseDirectory)
     }
 
-    public static func render(page: DisplayPage) throws -> String {
+    public static func render(page: DisplayPage, baseDirectory: String? = nil) throws -> String {
         let theme = try DisplayThemes.named(page.themeID)
-        return render(page: page, theme: theme)
+        return try render(page: page, theme: theme, baseDirectory: baseDirectory)
     }
 
-    public static func render(page: DisplayPage, theme: DisplayTheme) -> String {
-        let modules = page.blocks.map { DisplayModuleHTML.render($0) }.joined()
+    public static func render(page: DisplayPage, theme: DisplayTheme, baseDirectory: String? = nil) throws -> String {
+        let modules = try page.blocks.map { try DisplayModuleHTML.render($0, baseDirectory: baseDirectory) }.joined()
         let title = DisplayRendering.escape(page.title)
         let names = DisplayTypeToken.allCases.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
         return """
@@ -146,6 +146,11 @@ public enum DisplayLayout {
     .block[data-module="alert"][data-level="warning"]{box-shadow:inset 0.5vh 0 0 var(--alert)}
     .block[data-module="alert"][data-level="critical"]{background:var(--alert);color:var(--alert-foreground);box-shadow:none}
     .block[data-module="alert"][data-level="critical"] .kicker{color:var(--alert-foreground)}
+    .embed{flex:1;min-height:0;min-width:0;width:100%;border:0;overflow:hidden;background:transparent}
+    .media-slot{flex:1;min-height:0;min-width:0;overflow:hidden;display:flex}
+    .media{width:100%;height:100%;object-fit:contain}
+    .media[data-fit="cover"]{object-fit:cover}
+    .caption{flex:0 0 auto;margin:0;text-align:center;color:var(--muted);font-size:var(--type-s);font-weight:500}
     """
 
     private static func fitScript(_ names: String) -> String {
