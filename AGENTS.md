@@ -16,9 +16,9 @@ CI runs `swift test` on Linux and macOS. Linux cannot exercise HomeKit, AppKit, 
 1. Start `HomeSignalAgent` (or `--simulate` when hardware is absent). If the socket is down, commands exit `5`.
 2. Pass `--json` on every call. Parse the envelope: `ok`, `command`, `dryRun`, `data`, `error`.
 3. Discover names. Do not invent them. `device list`, `scene list`, `displays`, and `mirror status --target` report what this machine can see. Config placeholders such as `Lamp 1` and `TV` are examples.
-4. Use `--dry-run` before a mutating command when you only need the plan. Blink dry-run reads state and does not write. Mirror dry-run reads Control Center and does not click the target.
-5. `device blink` must restore power, brightness, hue, saturation, and color temperature. Exit `8` means it did not. Read the light and fix it.
-6. Show a page with `display message`, `display schedule`, `display layout`, or `display html --file`. Empty content is an error and must not be retried with a placeholder. Check `contentHash`, `title`, and `verified` in the result; `display_mismatch` means the screen is not the page you sent. `display html` shows caller HTML unchanged. `display layout` renders a JSON module spec and shows that HTML through the same read-back. The layout result also includes `html`.
+4. Use `--dry-run` before a mutating command when you only need the plan. Blink dry-run reads state and does not write. Mirror dry-run reads Control Center and does not click the target. Display dry-run reads whether the target screen is attached and does not wake, reconnect, or show a page.
+5. `device blink` and `home blink --accessory NAME --times N --interval SECONDS` must restore power, brightness, hue, saturation, and color temperature. Exit `8` means they did not. Read the light and fix it. `home blink` exits `3` when the accessory is missing and `6` when it is not a light.
+6. Show a page with `display message`, `display schedule`, `display layout`, or `display html --file`. Empty content is an error and must not be retried with a placeholder. The target is `mirror.target` / `mirror.device_id`, or `--target` / `--device-id` on the command. Do not invent a screen. A show wakes the display, holds a wake assertion until `display clear`, reconnects the receiver when its screen is missing, and places the agent's window full screen on that screen only. `verified` is true only when the window is on that screen, the window is full screen, and `contentHash` matches. Otherwise the command exits non-zero and the error names the step (`wake`, `reconnect`, `place`, or `verify`). `display_mismatch` is the verify step for a hash or title mismatch. Do not fall back to another screen or a placeholder page. `display html` shows caller HTML unchanged. `display layout` renders a JSON module spec and shows that HTML through the same read-back. The layout result also includes `html`.
 7. `home-signal describe --json` is the command manifest. `home-signal <command> --help` is the human text.
 
 ### Display layout
@@ -117,9 +117,10 @@ Config: `~/.config/home-signal/config.toml`. Socket: `~/.local/share/home-signal
 
 - Swift 6, strict concurrency. Protocols in `HomeSignalCore`. The agent process is the composition root (`Sources/HomeSignalAgent/Boot.swift`).
 - New device backends implement `LightBackend`. New signal outputs implement a channel protocol and a branch in `AgentRuntime`.
+- Display wake, attached screens, and window placement go through `DisplayPowerControlling`, `AttachedDisplayListing`, and `DisplayPlacing`. Fakes cover those in tests. The macOS types are `IOKitDisplayPower`, `MacAttachedDisplays`, and `MacDisplayChannel`. A show must not call `NSScreen.main` when the target is missing.
 - Comment only a non-obvious platform constraint. No file banners and no comments that restate the code.
 - Keep diffs small. `swift test` must pass before you finish.
 
 ## On a Mac, still verify
 
-HomeKit numeric restore, Shortcuts branches, the borderless window, Control Center mirroring (including window-mode click fractions), pointer events, and screenshots. Details are in the README.
+HomeKit numeric restore, Shortcuts branches, the borderless window on the configured AirPlay screen (wake, reconnect when the screen is gone, full-screen frame, `verified` false when it is not that screen), releasing the wake assertion on `display clear`, Control Center mirroring (including window-mode click fractions), pointer events, and screenshots. Details are in the README.

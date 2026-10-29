@@ -9,10 +9,10 @@ flowchart TD
   spec[JSON spec] --> validate[Validate]
   validate -->|empty or invalid| fail[Exit 1. Screen unchanged]
   validate -->|valid| render[Render HTML]
-  render --> show[Show the page]
-  show --> verify[Read back hash and title]
-  verify -->|match| ok[Exit 0. verified true]
-  verify -->|mismatch| mismatch[Exit 4. display_mismatch]
+  render --> show[Wake, reconnect target, full screen]
+  show --> verify[Hash, target screen, full screen]
+  verify -->|all match| ok[Exit 0. verified true]
+  verify -->|failed step| mismatch[Non-zero. Step named]
 ```
 
 An empty file, invalid JSON, unknown theme, unknown module, or blank field stops at validate. The current page stays in place.

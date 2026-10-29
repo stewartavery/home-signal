@@ -69,7 +69,7 @@ Until that build exists, use `shortcuts` or `http`.
 
 ## Commands
 
-Every command accepts `--json` (envelope on stdout), `--dry-run` (mutating commands do not change devices, the window, mirroring, or the pointer), `--config`, and `--socket`. Flags may appear before or after the subcommand. `home-signal describe --json` prints the manifest. `home-signal <command> --help` documents that command.
+Every command accepts `--json` (envelope on stdout), `--dry-run` (mutating commands do not change devices, the window, mirroring, or the pointer; a display dry-run does not wake, reconnect, or show), `--config`, and `--socket`. Flags may appear before or after the subcommand. `home-signal describe --json` prints the manifest. `home-signal <command> --help` documents that command.
 
 Exit codes: `0` success, `1` usage, `2` config, `3` not found, `4` backend failure, `5` agent is down, `6` unsupported or missing permission, `7` timeout, `8` blink could not restore the prior state, `64` invalid command line.
 
@@ -81,7 +81,8 @@ home-signal --json --dry-run device blink "Lamp 1" --times 3 --color amber
 home-signal --json scene list
 home-signal --json scene run "Scene A"
 
-home-signal display message "Example notice"
+home-signal display message "Example notice" --target "TV"
+home-signal --dry-run display message "Example notice"
 home-signal display schedule --title "Example day" \
   --row "09:00|Example item" \
   --row "12:30|Example meeting"
@@ -98,11 +99,20 @@ home-signal mirror disconnect --target "TV"
 home-signal input park
 home-signal input click 100 100 --clicks 2
 home-signal screenshot --display main --out /tmp/signal.png
+
+home-signal home blink --accessory "Lamp 1" --times 3 --interval 0.4
+home-signal --dry-run home blink --accessory "Lamp 1" --times 1 --interval 0.5
 ```
 
 `device set` writes only the fields you pass. `device blink` reads power, brightness, hue, saturation, and color temperature, blinks, writes that snapshot back, and reads the light again. A mismatch exits 8.
 
-`display message`, `display layout`, and `display html` do not invent a page. Empty text, an empty or invalid layout spec, a missing HTML argument, or an empty file exits 1 and leaves the current page alone. `display html` loads the file or string unchanged; it is not wrapped in a template. `display layout` renders a module spec to HTML and shows those bytes through the same read-back. After a show, the agent reads back the SHA-256 of the page and its title. The JSON result includes `contentHash`, `title`, and `verified`. A layout result also includes `html`. A mismatch exits 4 with code `display_mismatch`.
+`home blink --accessory NAME --times N --interval SECONDS` does the same restore for one accessory. `--interval` is the seconds the light stays on and the seconds it stays off between blinks (0.05 to 10). The name has to be a light from `device list`. A missing accessory exits 3. An accessory that is not a light exits 6 (`not_controllable`). `--dry-run` reads the prior state and does not write.
+
+`display message`, `display schedule`, `display layout`, and `display html` do not invent a page. Empty text, an empty or invalid layout spec, a missing HTML argument, or an empty file exits 1 and leaves the current page alone. `display html` loads the file or string unchanged; it is not wrapped in a template. `display layout` renders a module spec to HTML and shows those bytes through the same read-back.
+
+A show then wakes the display and holds a no-display-sleep assertion (the same idea as `caffeinate -d`) until `display clear` or the agent exits. It checks that the AirPlay receiver is attached. The receiver name and id come from `mirror.target` and `mirror.device_id`, or from `--target` and `--device-id` on that command. Those values are configuration, not names built into the tool. If that screen is missing, the agent reconnects it the same way as `mirror connect` and waits up to `display.reconnect_seconds`. The agent's own window is placed full screen on that screen. `verified` is true only when the SHA-256 and title match, the window's screen is that receiver, and the window covers that screen. Otherwise the command exits non-zero. The error names the failed step: `wake`, `reconnect`, `place`, or `verify`. A hash mismatch uses code `display_mismatch` and step `verify`. The window is not moved to another screen, and a failure does not substitute a placeholder page. `--dry-run` reports whether the receiver is attached and does not wake, reconnect, or show. `display clear` hides the window and releases the assertion. Its `verified` field is false because no page is confirmed.
+
+The JSON result includes `contentHash`, `title`, `verified`, `target`, `screen`, `fullScreen`, `onTarget`, and `holdingWake`. A layout result also includes `html`.
 
 ## Display layout
 
@@ -231,7 +241,7 @@ Video. `autoplay`, `muted`, and `loop` default to true:
 { "type": "video", "src": "https://example.com/example.mp4", "fit": "cover", "autoplay": true, "muted": true, "loop": true }
 ```
 
-`mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Updating the signal window does not reconnect AirPlay.
+`mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Showing a page reconnects that target when its screen is not attached. A second show does not reconnect while the screen is still attached.
 
 `--dry-run` on `mirror connect` still opens Control Center to read the checkbox. It does not click the target or the window-mode points.
 
@@ -243,9 +253,12 @@ Path: `~/.config/home-signal/config.toml` (version 1). Socket default: `~/.local
 [homekit]
 backend = "homekit"   # homekit | shortcuts | http | simulated
 
+[display]
+reconnect_seconds = 15   # how long a show waits for the receiver screen
+
 [mirror]
-target = "TV"         # AirPlay name shown in Control Center
-device_id = ""        # optional AXIdentifier; empty matches by name
+target = "TV"         # AirPlay name. Must match the attached screen name.
+device_id = ""        # optional. Matches a screen id, or the Control Center id when reconnecting.
 mode = "window"       # window | display
 
 [mirror.clicks]
@@ -257,7 +270,7 @@ mirror_this_window = { x = 0.50, y = 0.42 }
 
 `[[displays]]` entries are in points, top-left origin, y downward (the same space as `CGEvent`). On macOS the agent probes attached screens and uses those frames. Config names are kept when the origin matches. If probing is unavailable, the config values are the fallback. Optional `[mirror.absolute]` points are used only when the panel frame cannot be read.
 
-Simulated devices and scenes live under `[simulated]`. `HomeSignalAgent --simulate` uses them and does not touch HomeKit.
+Simulated devices and scenes live under `[simulated]`. `HomeSignalAgent --simulate` uses them and does not touch HomeKit. It also treats `mirror.target` as an attached screen and does not wake the display or open a window. Use `--dry-run` on a real agent when you need the plan without showing a page.
 
 ## Shortcuts backend
 
@@ -318,10 +331,13 @@ These paths are not executed in CI:
 
 - HomeKit get, set, blink, and read-back restore on a real accessory, including a bulb that was off and one that was in color-temperature mode.
 - Shortcuts fallback, including a shortcut that returns `{"error":...}` when it cannot set a numeric hue.
-- Menu-bar agent launch without a Dock icon, and the borderless signal window on the display named in config.
-- `display message` twice changes the page without a second `mirror connect`.
+- Menu-bar agent launch without a Dock icon, and the borderless signal window covering the target screen's full frame (the window does not use another screen when that one is missing).
+- Display asleep and the AirPlay screen gone: `display message` wakes the display, reconnects the configured receiver, places the window full screen on that screen, and returns `verified: true`. If reconnect times out, the command exits 7, the error step is `reconnect`, and the page is not left on a local monitor.
+- `display clear` hides the window and releases the wake assertion while the agent keeps running.
+- `display message` twice changes the page and does not reconnect when the target screen is still attached.
 - `display layout` on the signal window: one module fills the 16:9 canvas, and adding a module resizes the others without clipping the stage.
 - `mirror status`, `connect`, and `disconnect` for an AirPlay target matched by name and, if you set it, by `device_id`.
+- `home blink` on a real accessory, including one that was off, and a non-light name failing with `not_controllable` or `not_found`.
 - Window mode: panel-fraction clicks land on Choose Content, Window or App, and Mirror This Window. Adjust `[mirror.clicks]` if they do not. System Events positions and `CGEvent` share a top-left origin; confirm that on the machine you use.
 - A second display: probed origin and `input park --display <name>`.
 - `screenshot` after Screen Recording permission, and pointer events after Accessibility permission.

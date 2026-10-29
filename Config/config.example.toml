@@ -27,6 +27,7 @@ title_size = "6vw"
 row_size = "3.2vw"
 display_name = "main"
 park_mouse = true
+reconnect_seconds = 15
 
 [mirror]
 target = "TV"

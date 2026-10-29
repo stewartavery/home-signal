@@ -25,6 +25,7 @@ final class HomeSignalTests: XCTestCase {
         XCTAssertEqual(config.simulated.devices.map(\.name), ["Lamp 1", "Lamp 2"])
         XCTAssertEqual(config.simulated.scenes, ["Scene A"])
         XCTAssertEqual(config.mirror.clicks.chooseContent.x, 0.5, accuracy: 0.001)
+        XCTAssertEqual(config.display.reconnectSeconds, 15, accuracy: 0.001)
     }
 
     func testConfigRejectsUnknownVersion() {
@@ -171,9 +172,9 @@ final class HomeSignalTests: XCTestCase {
 
     func testMirrorConnectIsIdempotent() async throws {
         let mirror = SimulatedMirror()
-        let first = try await mirror.connect(target: "TV", mode: "window", dryRun: false)
+        let first = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false)
         XCTAssertTrue(first.changed)
-        let second = try await mirror.connect(target: "TV", mode: "window", dryRun: false)
+        let second = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false)
         XCTAssertFalse(second.changed)
         XCTAssertTrue(second.connected)
         let dry = await mirror.disconnect(target: "TV", dryRun: true)
@@ -251,6 +252,11 @@ final class HomeSignalTests: XCTestCase {
         XCTAssertEqual(shown.contentHash, ContentHash.sha256(page))
         XCTAssertEqual(shown.title, "Custom")
         XCTAssertTrue(shown.verified)
+        XCTAssertTrue(shown.fullScreen)
+        XCTAssertTrue(shown.onTarget)
+        XCTAssertEqual(shown.target, "TV")
+        XCTAssertFalse(shown.dryRun)
+        XCTAssertTrue(shown.holdingWake)
         let kept = await display.presentedHTML()
         XCTAssertEqual(kept, page)
         XCTAssertFalse(page.contains("class=\"message\""))

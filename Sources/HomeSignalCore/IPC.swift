@@ -6,6 +6,7 @@ public enum IPCMethod {
     public static let lightsGet = "lights.get"
     public static let lightsSet = "lights.set"
     public static let lightsBlink = "lights.blink"
+    public static let homeBlink = "home.blink"
     public static let scenesList = "scenes.list"
     public static let scenesRun = "scenes.run"
     public static let displayShow = "display.show"
@@ -24,7 +25,7 @@ public enum IPCMethod {
     public static let systemShutdown = "system.shutdown"
 
     public static let all = [
-        capabilities, lightsList, lightsGet, lightsSet, lightsBlink, scenesList, scenesRun,
+        capabilities, lightsList, lightsGet, lightsSet, lightsBlink, homeBlink, scenesList, scenesRun,
         displayShow, displayStatus, displayClear, mirrorStatus, mirrorConnect, mirrorDisconnect,
         inputClick, inputMove, inputScroll, inputPark, captureScreenshot, displaysList, systemPing, systemShutdown,
     ]
@@ -51,20 +52,22 @@ public struct IPCErrorBody: Sendable, Equatable, Codable {
     public var message: String
     public var hint: String?
     public var exitCode: Int32
+    public var step: String?
 
-    public init(code: String, message: String, hint: String? = nil, exitCode: Int32) {
+    public init(code: String, message: String, hint: String? = nil, exitCode: Int32, step: String? = nil) {
         self.code = code
         self.message = message
         self.hint = hint
         self.exitCode = exitCode
+        self.step = step
     }
 
     public init(_ error: HomeSignalError) {
-        self.init(code: error.code, message: error.message, hint: error.hint, exitCode: error.exitCode)
+        self.init(code: error.code, message: error.message, hint: error.hint, exitCode: error.exitCode, step: error.step)
     }
 
     public var error: HomeSignalError {
-        HomeSignalError(code: code, message: message, hint: hint, exitCode: exitCode)
+        HomeSignalError(code: code, message: message, hint: hint, exitCode: exitCode, step: step)
     }
 }
 
@@ -159,10 +162,14 @@ public struct BlinkParams: Sendable, Equatable, Codable {
 public struct DisplayShowParams: Sendable, Equatable, Codable {
     public var document: DisplayDocument
     public var present: Bool
+    public var targetName: String?
+    public var targetDeviceID: String?
 
-    public init(document: DisplayDocument, present: Bool) {
+    public init(document: DisplayDocument, present: Bool, targetName: String? = nil, targetDeviceID: String? = nil) {
         self.document = document
         self.present = present
+        self.targetName = targetName
+        self.targetDeviceID = targetDeviceID
     }
 }
 
@@ -179,9 +186,26 @@ public struct MirrorTargetParams: Sendable, Equatable, Codable {
 public struct MirrorConnectParams: Sendable, Equatable, Codable {
     public var target: String
     public var mode: String
-    public init(target: String, mode: String) {
+    public var deviceID: String
+
+    public init(target: String, mode: String, deviceID: String = "") {
         self.target = target
         self.mode = mode
+        self.deviceID = deviceID
+    }
+}
+
+public struct HomeBlinkParams: Sendable, Equatable, Codable {
+    public var accessory: String
+    public var times: Int
+    public var intervalSeconds: Double
+    public var color: String
+
+    public init(accessory: String, times: Int, intervalSeconds: Double, color: String) {
+        self.accessory = accessory
+        self.times = times
+        self.intervalSeconds = intervalSeconds
+        self.color = color
     }
 }
 

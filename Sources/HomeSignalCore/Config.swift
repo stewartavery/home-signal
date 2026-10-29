@@ -57,6 +57,7 @@ public struct DisplayConfig: Sendable, Equatable, Codable {
     public var rowSize: String
     public var displayName: String
     public var parkMouse: Bool
+    public var reconnectSeconds: Double
 
     public init(
         background: String,
@@ -66,7 +67,8 @@ public struct DisplayConfig: Sendable, Equatable, Codable {
         titleSize: String,
         rowSize: String,
         displayName: String,
-        parkMouse: Bool
+        parkMouse: Bool,
+        reconnectSeconds: Double
     ) {
         self.background = background
         self.foreground = foreground
@@ -76,6 +78,7 @@ public struct DisplayConfig: Sendable, Equatable, Codable {
         self.rowSize = rowSize
         self.displayName = displayName
         self.parkMouse = parkMouse
+        self.reconnectSeconds = reconnectSeconds
     }
 }
 
@@ -271,6 +274,7 @@ public enum ConfigText {
     row_size = "3.2vw"
     display_name = "main"
     park_mouse = true
+    reconnect_seconds = 15
 
     [mirror]
     target = "TV"
@@ -410,7 +414,8 @@ public enum ConfigLoader {
                 titleSize: displayTable?["title_size"]?.string ?? defaults.display.titleSize,
                 rowSize: displayTable?["row_size"]?.string ?? defaults.display.rowSize,
                 displayName: displayTable?["display_name"]?.string ?? defaults.display.displayName,
-                parkMouse: displayTable?["park_mouse"]?.bool ?? defaults.display.parkMouse
+                parkMouse: displayTable?["park_mouse"]?.bool ?? defaults.display.parkMouse,
+                reconnectSeconds: displayTable?["reconnect_seconds"]?.double ?? defaults.display.reconnectSeconds
             ),
             mirror: MirrorConfig(
                 target: mirrorTable?["target"]?.string ?? defaults.mirror.target,
@@ -440,6 +445,9 @@ public enum ConfigLoader {
         }
         guard !config.mirror.target.isEmpty else {
             throw HomeSignalError.config("mirror.target must be the AirPlay device name shown in Control Center.")
+        }
+        guard config.display.reconnectSeconds > 0, config.display.reconnectSeconds <= 120 else {
+            throw HomeSignalError.config("display.reconnect_seconds must be greater than 0 and at most 120.")
         }
         return config
     }
@@ -540,7 +548,8 @@ private let builtinDefaults = HomeSignalConfig(
         titleSize: "6vw",
         rowSize: "3.2vw",
         displayName: "main",
-        parkMouse: true
+        parkMouse: true,
+        reconnectSeconds: 15
     ),
     mirror: MirrorConfig(
         target: "TV",

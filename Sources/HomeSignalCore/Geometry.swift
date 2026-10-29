@@ -62,7 +62,8 @@ public enum DisplayGeometry {
                 height: probe.height,
                 originX: probe.originX,
                 originY: probe.originY,
-                primary: probe.primary
+                primary: probe.primary,
+                deviceID: probe.deviceID
             )
         }
     }

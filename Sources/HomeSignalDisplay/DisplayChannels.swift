@@ -1,6 +1,6 @@
 import HomeSignalCore
 
-public actor SimulatedDisplay: DisplayChannel {
+public actor SimulatedDisplay: DisplayChannel, DisplayPlacing {
     private var shownHTML: String?
     private var shown: DisplayReadback?
 
@@ -27,6 +27,15 @@ public actor SimulatedDisplay: DisplayChannel {
     public func presentedHTML() async -> String? {
         shownHTML
     }
+
+    public func place(html: String, kind: String, present: Bool, target: DisplayTarget) async throws -> PlacementReport {
+        let readback = try await show(html: html, kind: kind, present: present)
+        return PlacementReport(readback: readback, screenName: target.name, deviceID: target.deviceID, fullScreen: true)
+    }
+
+    public func dismiss() async {
+        await clear(present: true)
+    }
 }
 
 #if os(macOS)
@@ -43,11 +52,46 @@ public final class MacDisplayWindow: NSObject, WKNavigationDelegate {
     private var loadWaiter: CheckedContinuation<Void, Never>?
     private var loadFinished = false
 
-    public func show(html: String, kind: String, present: Bool, screenName: String?, displays: [DisplayBounds]) async throws -> DisplayReadback {
-        ensureWindow(named: screenName, displays: displays)
+    public func place(html: String, kind: String, present: Bool, target: DisplayTarget) async throws -> PlacementReport {
+        let screen = try screen(for: target)
+        ensureWindow(on: screen)
         guard let webView else {
-            throw HomeSignalError.backend("The signal window has no view.")
+            throw HomeSignalError.displayStep("place", "The signal window has no view.")
         }
+        let readback = try await load(html: html, kind: kind, into: webView)
+        guard let window else {
+            throw HomeSignalError.displayStep("place", "The signal window was not created.")
+        }
+        guard let placed = window.screen else {
+            window.orderOut(nil)
+            throw HomeSignalError.displayStep("place", "The window is not on a screen. Refusing to use another screen.")
+        }
+        let placedID = ScreenIdentity.deviceID(placed)
+        let placedName = placed.localizedName
+        let fullScreen = covers(screen)
+        let onScreen = ScreenIdentity.matches(placed, target: target)
+        guard onScreen, fullScreen else {
+            window.orderOut(nil)
+            if !onScreen {
+                throw HomeSignalError.displayStep(
+                    "place",
+                    "The window is on \(placedName), not \(target.name). Refusing to use another screen."
+                )
+            }
+            throw HomeSignalError.displayStep("place", "The window does not cover \(target.name).")
+        }
+        if present {
+            window.orderFrontRegardless()
+        }
+        return PlacementReport(
+            readback: readback,
+            screenName: placedName,
+            deviceID: placedID,
+            fullScreen: true
+        )
+    }
+
+    private func load(html: String, kind: String, into webView: WKWebView) async throws -> DisplayReadback {
         loadFinished = false
         webView.loadHTMLString(html, baseURL: nil)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -71,9 +115,6 @@ public final class MacDisplayWindow: NSObject, WKNavigationDelegate {
         window?.title = parsed ?? ""
         let value = DisplayReadback(contentHash: ContentHash.sha256(html), title: parsed, kind: kind)
         readback = value
-        if present {
-            window?.orderFrontRegardless()
-        }
         return value
     }
 
@@ -107,9 +148,9 @@ public final class MacDisplayWindow: NSObject, WKNavigationDelegate {
         }
     }
 
-    private func ensureWindow(named screenName: String?, displays: [DisplayBounds]) {
-        let screen = pickScreen(named: screenName, displays: displays) ?? NSScreen.main
-        let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+    // Borderless signal windows cover the target screen's frame. toggleFullScreen would restyle the window and animate.
+    private func ensureWindow(on screen: NSScreen) {
+        let frame = screen.frame
         if window == nil {
             let window = NSWindow(
                 contentRect: frame,
@@ -133,30 +174,83 @@ public final class MacDisplayWindow: NSObject, WKNavigationDelegate {
         window?.setFrame(frame, display: true)
     }
 
-    private func pickScreen(named screenName: String?, displays: [DisplayBounds]) -> NSScreen? {
-        guard let screenName, let bounds = displays.first(where: { $0.name == screenName }) else {
-            return NSScreen.main
+    private func screen(for target: DisplayTarget) throws -> NSScreen {
+        if let match = NSScreen.screens.first(where: { ScreenIdentity.matches($0, target: target) }) {
+            return match
         }
-        return NSScreen.screens.first { screen in
-            abs(Int(screen.frame.width.rounded()) - bounds.width) <= 2
-                && abs(Int(screen.frame.height.rounded()) - bounds.height) <= 2
+        let attached = NSScreen.screens.map { $0.localizedName }
+        let listed = attached.isEmpty ? "none" : attached.joined(separator: ", ")
+        throw HomeSignalError.displayStep(
+            "place",
+            "Target display \(target.name) is not attached (\(listed)). Refusing to use another screen."
+        )
+    }
+
+    private func covers(_ screen: NSScreen) -> Bool {
+        guard let frame = window?.frame else { return false }
+        let target = screen.frame
+        return abs(frame.origin.x - target.origin.x) <= 2
+            && abs(frame.origin.y - target.origin.y) <= 2
+            && abs(frame.size.width - target.size.width) <= 2
+            && abs(frame.size.height - target.size.height) <= 2
+    }
+}
+
+@MainActor
+enum ScreenIdentity {
+    static func deviceID(_ screen: NSScreen) -> String {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        guard let number = screen.deviceDescription[key] as? NSNumber else { return "" }
+        return number.stringValue
+    }
+
+    static func matches(_ screen: NSScreen, target: DisplayTarget) -> Bool {
+        if !target.deviceID.isEmpty, deviceID(screen) == target.deviceID {
+            return true
+        }
+        return screen.localizedName == target.name
+    }
+}
+
+public struct MacAttachedDisplays: AttachedDisplayListing {
+    public init() {}
+
+    public func attachedDisplays() async -> [AttachedDisplay] {
+        await MainActor.run {
+            let screens = NSScreen.screens
+            let frames = screens.map { screen in
+                CocoaFrame(
+                    x: screen.frame.origin.x,
+                    y: screen.frame.origin.y,
+                    width: screen.frame.width,
+                    height: screen.frame.height
+                )
+            }
+            return zip(screens, DisplayGeometry.fromCocoaFrames(frames)).map { screen, bounds in
+                AttachedDisplay(
+                    name: screen.localizedName,
+                    deviceID: ScreenIdentity.deviceID(screen),
+                    width: bounds.width,
+                    height: bounds.height,
+                    originX: bounds.originX,
+                    originY: bounds.originY,
+                    primary: bounds.primary
+                )
+            }
         }
     }
 }
 
-public final class MacDisplayChannel: DisplayChannel, @unchecked Sendable {
-    private let screenName: String
-    private let displays: @Sendable () -> [DisplayBounds]
-
-    public init(screenName: String, displays: @escaping @Sendable () -> [DisplayBounds]) {
-        self.screenName = screenName
-        self.displays = displays
-    }
+public final class MacDisplayChannel: DisplayChannel, DisplayPlacing, @unchecked Sendable {
+    public init() {}
 
     public func show(html: String, kind: String, present: Bool) async throws -> DisplayReadback {
-        let name = screenName
-        let screens = displays()
-        return try await MacDisplayWindow.shared.show(html: html, kind: kind, present: present, screenName: name, displays: screens)
+        _ = (html, kind, present)
+        throw HomeSignalError.displayStep("place", "Refusing to show without the target display. The window is not moved to another screen.")
+    }
+
+    public func place(html: String, kind: String, present: Bool, target: DisplayTarget) async throws -> PlacementReport {
+        try await MacDisplayWindow.shared.place(html: html, kind: kind, present: present, target: target)
     }
 
     public func readback() async -> DisplayReadback? {
@@ -165,6 +259,10 @@ public final class MacDisplayChannel: DisplayChannel, @unchecked Sendable {
 
     public func clear(present: Bool) async {
         await MacDisplayWindow.shared.clear(present: present)
+    }
+
+    public func dismiss() async {
+        await clear(present: true)
     }
 }
 #endif

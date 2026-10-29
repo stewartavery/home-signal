@@ -40,7 +40,7 @@ struct AgentCommand: AsyncParsableCommand {
         let socketPath = HomeSignalPaths.expand(socket ?? loaded.agent.socketPath)
         let displays = probedDisplays(configured: loaded.displays, simulate: simulate)
         let lights = try makeLights(loaded, simulate: simulate)
-        let display = makeDisplay(loaded, displays: displays, simulate: simulate)
+        let signals = makeSignals(loaded, displays: displays, simulate: simulate)
         let input = makeInput(simulate: simulate)
         let mirror = makeMirror(loaded, displays: displays, input: input, simulate: simulate)
         let capture = makeCapture(simulate: simulate)
@@ -49,11 +49,14 @@ struct AgentCommand: AsyncParsableCommand {
             config: loaded,
             displays: displays,
             lights: lights,
-            display: display,
+            display: signals.display,
             mirror: mirror,
             input: input,
             capture: capture,
-            stop: stop
+            stop: stop,
+            power: signals.power,
+            screens: signals.screens,
+            placer: signals.placer
         )
         Log(category: "agent").info("backend \(lights.backendID) simulate \(simulate)")
         try await AgentServer.serve(runtime: runtime, stop: stop, path: socketPath)
@@ -95,15 +98,32 @@ private func makeLights(_ config: HomeSignalConfig, simulate: Bool) throws -> an
     }
 }
 
-private func makeDisplay(_ config: HomeSignalConfig, displays: [DisplayBounds], simulate: Bool) -> any DisplayChannel {
+private struct SignalWiring {
+    var display: any DisplayChannel
+    var placer: any DisplayPlacing
+    var power: any DisplayPowerControlling
+    var screens: any AttachedDisplayListing
+}
+
+private func makeSignals(_ config: HomeSignalConfig, displays: [DisplayBounds], simulate: Bool) -> SignalWiring {
     #if os(macOS)
     if !simulate {
-        let name = config.display.displayName
-        let snapshot = displays
-        return MacDisplayChannel(screenName: name, displays: { snapshot })
+        let channel = MacDisplayChannel()
+        return SignalWiring(
+            display: channel,
+            placer: channel,
+            power: IOKitDisplayPower(),
+            screens: MacAttachedDisplays()
+        )
     }
     #endif
-    return SimulatedDisplay()
+    let simulated = SimulatedDisplay()
+    return SignalWiring(
+        display: simulated,
+        placer: simulated,
+        power: SimulatedDisplayPower(),
+        screens: StaticAttachedDisplays(AttachedDisplay.includingTarget(config, geometry: displays))
+    )
 }
 
 private func makeInput(simulate: Bool) -> any InputChannel {

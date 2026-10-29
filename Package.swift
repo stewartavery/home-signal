@@ -18,7 +18,13 @@ let package = Package(
         .target(name: "HomeSignalCore"),
         .target(name: "HomeSignalKit", dependencies: ["HomeSignalCore"]),
         .target(name: "HomeSignalLights", dependencies: ["HomeSignalCore"]),
-        .target(name: "HomeSignalDisplay", dependencies: ["HomeSignalCore"]),
+        .target(
+            name: "HomeSignalDisplay",
+            dependencies: ["HomeSignalCore"],
+            linkerSettings: [
+                .linkedFramework("IOKit", .when(platforms: [.macOS])),
+            ]
+        ),
         .target(name: "HomeSignalMirroring", dependencies: ["HomeSignalCore"]),
         .target(name: "HomeSignalInput", dependencies: ["HomeSignalCore"]),
         .target(name: "HomeSignalCapture", dependencies: ["HomeSignalCore"]),

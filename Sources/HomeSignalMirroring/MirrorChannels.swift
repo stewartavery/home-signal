@@ -9,7 +9,8 @@ public actor SimulatedMirror: MirrorChannel {
         return MirrorStatus(target: target, connected: mode != nil, mode: mode, changed: false)
     }
 
-    public func connect(target: String, mode: String, dryRun: Bool) async throws -> MirrorStatus {
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
+        _ = deviceID
         let mode = try MirrorMode.validate(mode)
         if routes[target] != nil {
             return MirrorStatus(target: target, connected: true, mode: routes[target], changed: false)
@@ -58,7 +59,7 @@ public struct SystemEventsMirror: MirrorChannel {
         return MirrorStatus(target: target, connected: connected, mode: connected ? config.mode : nil, changed: false)
     }
 
-    public func connect(target: String, mode: String, dryRun: Bool) async throws -> MirrorStatus {
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
         let mode = try MirrorMode.validate(mode)
         let current = try await status(target: target)
         if current.connected {
@@ -68,7 +69,8 @@ public struct SystemEventsMirror: MirrorChannel {
             return MirrorStatus(target: target, connected: true, mode: mode, changed: true)
         }
         let leaveOpen = mode == MirrorMode.window
-        let output = try await osascript(MirrorScript.controlCenter(target: target, deviceID: config.deviceID, action: "connect", leaveOpen: leaveOpen))
+        let id = deviceID.isEmpty ? config.deviceID : deviceID
+        let output = try await osascript(MirrorScript.controlCenter(target: target, deviceID: id, action: "connect", leaveOpen: leaveOpen))
         var points: [Point] = []
         if leaveOpen {
             points = try await clickWindowRoute()
@@ -161,9 +163,9 @@ public struct FallbackMirror: MirrorChannel {
         try await recover { try await primary.status(target: target) } fallback: { try await fallback.status(target: target) }
     }
 
-    public func connect(target: String, mode: String, dryRun: Bool) async throws -> MirrorStatus {
-        try await recover { try await primary.connect(target: target, mode: mode, dryRun: dryRun) } fallback: {
-            try await fallback.connect(target: target, mode: mode, dryRun: dryRun)
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
+        try await recover { try await primary.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun) } fallback: {
+            try await fallback.connect(target: target, mode: mode, deviceID: deviceID, dryRun: dryRun)
         }
     }
 
@@ -189,8 +191,8 @@ public struct UnavailableNativeMirror: MirrorChannel {
         throw HomeSignalError.nativeRouteUnavailable
     }
 
-    public func connect(target: String, mode: String, dryRun: Bool) async throws -> MirrorStatus {
-        _ = (target, mode, dryRun)
+    public func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus {
+        _ = (target, mode, deviceID, dryRun)
         throw HomeSignalError.nativeRouteUnavailable
     }
 
@@ -205,10 +207,27 @@ import AppKit
 
 public enum MacDisplayProbe {
     public static func read() -> [DisplayBounds] {
-        let frames = NSScreen.screens.map { screen in
+        let screens = NSScreen.screens
+        let frames = screens.map { screen in
             CocoaFrame(x: screen.frame.origin.x, y: screen.frame.origin.y, width: screen.frame.width, height: screen.frame.height)
         }
-        return DisplayGeometry.fromCocoaFrames(frames)
+        return zip(screens, DisplayGeometry.fromCocoaFrames(frames)).map { screen, bounds in
+            DisplayBounds(
+                name: screen.localizedName,
+                width: bounds.width,
+                height: bounds.height,
+                originX: bounds.originX,
+                originY: bounds.originY,
+                primary: bounds.primary,
+                deviceID: screenNumber(screen)
+            )
+        }
+    }
+
+    private static func screenNumber(_ screen: NSScreen) -> String {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        guard let number = screen.deviceDescription[key] as? NSNumber else { return "" }
+        return number.stringValue
     }
 }
 #endif

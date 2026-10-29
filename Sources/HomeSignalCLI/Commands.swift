@@ -40,6 +40,7 @@ struct Root: AsyncParsableCommand {
             DaemonCommand.self,
             CapabilitiesCommand.self,
             DeviceCommand.self,
+            HomeCommand.self,
             SceneCommand.self,
             DisplayCommand.self,
             MirrorCommand.self,
@@ -275,6 +276,38 @@ struct DeviceBlink: AsyncParsableCommand {
     }
 }
 
+struct HomeCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "home",
+        abstract: "Blink a HomeKit accessory light by name.",
+        subcommands: [HomeBlink.self]
+    )
+}
+
+struct HomeBlink: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "blink",
+        abstract: "Blink an accessory light, then restore its prior state.",
+        discussion: """
+        --accessory is the light name from `device list`. The agent reads power, brightness, hue, \
+        saturation, and color temperature, blinks, writes that snapshot back, and reads the light again. \
+        --interval is the number of seconds the light stays on and the number of seconds it stays off between blinks. \
+        A missing accessory exits 3. An accessory that is not a light exits 6. Exit 8 means the prior state was not restored. \
+        --dry-run reads the light and does not change it.
+        """
+    )
+    @OptionGroup var global: GlobalOptions
+    @Option(name: .long, help: "Accessory name.") var accessory: String
+    @Option(name: .long, help: "How many on/off cycles. From 1 to 30.") var times: Int = 3
+    @Option(name: .long, help: "Seconds on, and seconds off, per blink. From 0.05 to 10.") var interval: Double = 0.4
+    @Option(name: .long, help: "Named color used while the light is on.") var color: String = "amber"
+
+    func run() async throws {
+        let params = HomeBlinkParams(accessory: accessory, times: times, intervalSeconds: interval, color: color)
+        try await IPCCall.perform(global: global, command: "home.blink", method: IPCMethod.homeBlink, params: try params.jsonValue())
+    }
+}
+
 struct SceneCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "scene",
@@ -304,11 +337,19 @@ struct SceneRun: AsyncParsableCommand {
     }
 }
 
+struct TargetOptions: ParsableArguments {
+    @Option(name: .long, help: "AirPlay receiver name. Defaults to mirror.target. Never a built-in name.")
+    var target: String?
+
+    @Option(name: .customLong("device-id"), help: "Receiver id from config or from the attached screen id. Defaults to mirror.device_id.")
+    var deviceID: String?
+}
+
 struct DisplayCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "display",
-        abstract: "Show a message, schedule, layout, or HTML page on the agent's full-screen window.",
-        discussion: "Updating the window does not reconnect AirPlay. A show with no content fails and leaves the current page in place. `display layout` renders a JSON module spec into the 16:9 canvas. `display html` loads caller HTML unchanged. The JSON result includes the content hash and title read back from the window.",
+        abstract: "Show a message, schedule, layout, or HTML page full screen on the configured AirPlay display.",
+        discussion: "The agent wakes the display, reconnects the target when it is not attached, and places the signal window on that screen only. It does not use another screen. `verified` is true only when the hash and title match, the window is on the target, and the window is full screen. A show with no content fails and leaves the current page in place. `display layout` renders a JSON module spec into the 16:9 canvas. `display html` loads caller HTML unchanged. --target and --device-id override mirror.target and mirror.device_id for this command. --dry-run does not wake, reconnect, or show.",
         subcommands: [DisplayMessage.self, DisplaySchedule.self, DisplayLayoutCommand.self, DisplayHTML.self, DisplayClear.self, DisplayStatus.self]
     )
 }
@@ -317,9 +358,10 @@ struct DisplayMessage: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "message",
         abstract: "Show centered text.",
-        discussion: "The text argument is required. An empty string is an error and does not replace the page. Repeat the command to change the text in place. --no-present updates the page without ordering the window forward. The result includes contentHash, title, and verified."
+        discussion: "The text argument is required. An empty string is an error and does not replace the page. Repeat the command to change the text in place. --no-present updates the page without ordering the window forward. verified is true only when the page is on the target display, full screen, and the hash matches."
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var targetOptions: TargetOptions
     @Argument(help: "Text to show.") var text: String
     @Option(name: .long, help: "Optional heading above the message.") var title: String?
     @Flag(name: .customLong("no-present"), help: "Do not bring the window forward.") var noPresent = false
@@ -328,7 +370,7 @@ struct DisplayMessage: AsyncParsableCommand {
         let config = try CLIRuntime.load(global)
         let doc = document(from: config, kind: DisplayKind.message, title: title, message: text, rows: [])
         _ = try DisplayRendering.prepare(doc)
-        let params = DisplayShowParams(document: doc, present: !noPresent)
+        let params = DisplayShowParams(document: doc, present: !noPresent, targetName: targetOptions.target, targetDeviceID: targetOptions.deviceID)
         try await IPCCall.perform(global: global, command: "display.message", method: IPCMethod.displayShow, params: try params.jsonValue())
     }
 }
@@ -340,6 +382,7 @@ struct DisplaySchedule: AsyncParsableCommand {
         discussion: "Pass one --row \"09:00|Example\" per line. Labels that contain | can be sent with --rows-json, a JSON array of {\"time\",\"label\"}."
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var targetOptions: TargetOptions
     @Option(name: .long, help: "Heading.") var title: String
     @Option(name: .long, help: "Repeat for each row: time|label.") var row: [String] = []
     @Option(name: .customLong("rows-json"), help: "JSON array of time/label objects.") var rowsJSON: String?
@@ -354,7 +397,7 @@ struct DisplaySchedule: AsyncParsableCommand {
         let config = try CLIRuntime.load(global)
         let doc = document(from: config, kind: DisplayKind.schedule, title: title, message: nil, rows: rows)
         _ = try DisplayRendering.prepare(doc)
-        let params = DisplayShowParams(document: doc, present: !noPresent)
+        let params = DisplayShowParams(document: doc, present: !noPresent, targetName: targetOptions.target, targetDeviceID: targetOptions.deviceID)
         try await IPCCall.perform(global: global, command: "display.schedule", method: IPCMethod.displayShow, params: try params.jsonValue())
     }
 }
@@ -375,6 +418,7 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
         """
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var targetOptions: TargetOptions
     @Option(name: .long, help: "UTF-8 JSON spec file.") var file: String?
     @Option(name: .long, help: "JSON spec. Use --file for a longer document.") var spec: String?
     @Option(name: .long, help: "Theme id. Overrides the spec. Built-in themes: default, moonlit-autumn.") var theme: String?
@@ -389,7 +433,7 @@ struct DisplayLayoutCommand: AsyncParsableCommand {
         let result = try await IPCCall.send(
             global: global,
             method: IPCMethod.displayShow,
-            params: try DisplayShowParams(document: doc, present: !noPresent).jsonValue()
+            params: try DisplayShowParams(document: doc, present: !noPresent, targetName: targetOptions.target, targetDeviceID: targetOptions.deviceID).jsonValue()
         )
         var fields = result.object ?? [:]
         fields["html"] = .string(markup)
@@ -432,6 +476,7 @@ struct DisplayHTML: AsyncParsableCommand {
         discussion: "Pass --file or --html, not both. The bytes are loaded as provided. An empty file or string is an error and does not replace the page. The result contentHash is the SHA-256 of those bytes, and title is the document title element when it has one."
     )
     @OptionGroup var global: GlobalOptions
+    @OptionGroup var targetOptions: TargetOptions
     @Option(name: .long, help: "UTF-8 HTML file to show.") var file: String?
     @Option(name: .long, help: "HTML document to show.") var html: String?
     @Flag(name: .customLong("no-present"), help: "Do not bring the window forward.") var noPresent = false
@@ -459,13 +504,17 @@ struct DisplayHTML: AsyncParsableCommand {
         let config = try CLIRuntime.load(global)
         let doc = document(from: config, kind: DisplayKind.html, title: nil, message: nil, rows: [], html: markup)
         _ = try DisplayRendering.prepare(doc)
-        let params = DisplayShowParams(document: doc, present: !noPresent)
+        let params = DisplayShowParams(document: doc, present: !noPresent, targetName: targetOptions.target, targetDeviceID: targetOptions.deviceID)
         try await IPCCall.perform(global: global, command: "display.html", method: IPCMethod.displayShow, params: try params.jsonValue())
     }
 }
 
 struct DisplayClear: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "clear", abstract: "Replace the window contents with an empty page.")
+    static let configuration = CommandConfiguration(
+        commandName: "clear",
+        abstract: "Hide the signal window and release the display-wake assertion.",
+        discussion: "This is the stop for a page. It does not move the window to another screen and it does not reconnect. --dry-run leaves the window and the assertion alone. verified is false because nothing is confirmed on the target."
+    )
     @OptionGroup var global: GlobalOptions
     @Flag(name: .customLong("no-present"), help: "Do not bring the window forward.") var noPresent = false
     func run() async throws {
@@ -518,10 +567,15 @@ struct MirrorConnectCommand: AsyncParsableCommand {
     )
     @OptionGroup var global: GlobalOptions
     @Option(name: .long, help: "AirPlay name. Defaults to config.") var target: String?
+    @Option(name: .customLong("device-id"), help: "AirPlay id. Defaults to mirror.device_id. Empty matches by name.") var deviceID: String?
     @Option(name: .long, help: "window or display. Defaults to config.") var mode: String?
     func run() async throws {
         let config = try CLIRuntime.load(global)
-        let params = MirrorConnectParams(target: target ?? config.mirror.target, mode: mode ?? config.mirror.mode)
+        let params = MirrorConnectParams(
+            target: target ?? config.mirror.target,
+            mode: mode ?? config.mirror.mode,
+            deviceID: deviceID ?? config.mirror.deviceID
+        )
         try await IPCCall.perform(global: global, command: "mirror.connect", method: IPCMethod.mirrorConnect, params: try params.jsonValue())
     }
 }
@@ -642,16 +696,17 @@ enum CommandCatalog {
         CommandSpec(name: "device get", summary: "Read a light.", mutating: false, idempotent: true, arguments: ["name"], options: []),
         CommandSpec(name: "device set", summary: "Set light fields.", mutating: true, idempotent: true, arguments: ["name"], options: ["on", "off", "brightness", "hue", "saturation", "color-temperature", "color"]),
         CommandSpec(name: "device blink", summary: "Blink a light and restore the prior state.", mutating: true, idempotent: false, arguments: ["name"], options: ["times", "color", "on-ms", "off-ms"]),
+        CommandSpec(name: "home blink", summary: "Blink an accessory light by name and restore the prior state.", mutating: true, idempotent: false, arguments: [], options: ["accessory", "times", "interval", "color"]),
         CommandSpec(name: "scene list", summary: "List scenes.", mutating: false, idempotent: true, arguments: [], options: []),
         CommandSpec(name: "scene run", summary: "Run a scene.", mutating: true, idempotent: false, arguments: ["name"], options: []),
-        CommandSpec(name: "display message", summary: "Show text on the signal window. Empty text is an error.", mutating: true, idempotent: true, arguments: ["text"], options: ["title", "no-present"]),
-        CommandSpec(name: "display schedule", summary: "Show a title and time/label rows.", mutating: true, idempotent: true, arguments: [], options: ["title", "row", "rows-json", "no-present"]),
-        CommandSpec(name: "display layout", summary: "Render a JSON module spec on the 16:9 canvas and verify the read-back. Empty or invalid specs are an error.", mutating: true, idempotent: true, arguments: [], options: ["file", "spec", "theme", "no-present"]),
-        CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify the read-back hash.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present"]),
-        CommandSpec(name: "display clear", summary: "Show an empty page.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
+        CommandSpec(name: "display message", summary: "Show text full screen on the target display. Empty text is an error.", mutating: true, idempotent: true, arguments: ["text"], options: ["title", "no-present", "target", "device-id"]),
+        CommandSpec(name: "display schedule", summary: "Show a title and time/label rows on the target display.", mutating: true, idempotent: true, arguments: [], options: ["title", "row", "rows-json", "no-present", "target", "device-id"]),
+        CommandSpec(name: "display layout", summary: "Render a JSON module spec on the 16:9 canvas and verify it on the target display. Empty or invalid specs are an error.", mutating: true, idempotent: true, arguments: [], options: ["file", "spec", "theme", "no-present", "target", "device-id"]),
+        CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify it on the target display.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present", "target", "device-id"]),
+        CommandSpec(name: "display clear", summary: "Hide the signal window and release the wake assertion.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
         CommandSpec(name: "display status", summary: "Current signal document.", mutating: false, idempotent: true, arguments: [], options: []),
         CommandSpec(name: "mirror status", summary: "Whether an AirPlay target is selected.", mutating: false, idempotent: true, arguments: [], options: ["target"]),
-        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "mode"]),
+        CommandSpec(name: "mirror connect", summary: "Mirror to an AirPlay target.", mutating: true, idempotent: true, arguments: [], options: ["target", "device-id", "mode"]),
         CommandSpec(name: "mirror disconnect", summary: "Stop mirroring to a target.", mutating: true, idempotent: true, arguments: [], options: ["target"]),
         CommandSpec(name: "input click", summary: "Click.", mutating: true, idempotent: true, arguments: ["x", "y"], options: ["button", "clicks"]),
         CommandSpec(name: "input move", summary: "Move the pointer.", mutating: true, idempotent: true, arguments: ["x", "y"], options: []),
