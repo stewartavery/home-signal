@@ -31,6 +31,12 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         HomeSignalError(code: "usage", message: message, exitCode: 1)
     }
 
+    public static func displayRefusal(_ message: String) -> HomeSignalError {
+        let line = "Refusing to replace the screen."
+        let text = message.contains(line) ? message : "\(message) \(line)"
+        return usage(text)
+    }
+
     public static func config(_ message: String, hint: String? = nil) -> HomeSignalError {
         HomeSignalError(code: "config", message: message, hint: hint, exitCode: 2)
     }

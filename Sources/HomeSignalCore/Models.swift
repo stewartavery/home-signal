@@ -292,6 +292,7 @@ public enum DisplayKind {
     public static let message = "message"
     public static let schedule = "schedule"
     public static let html = "html"
+    public static let layout = "layout"
     public static let clear = "clear"
 }
 

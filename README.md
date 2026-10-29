@@ -85,6 +85,8 @@ home-signal display message "Example notice"
 home-signal display schedule --title "Example day" \
   --row "09:00|Example item" \
   --row "12:30|Example meeting"
+home-signal display layout --file ./spec.json
+home-signal display layout --theme moonlit-autumn --spec '{"title":"Reminder","theme":"default","modules":[{"type":"message","text":"Example reminder"}]}'
 home-signal display html --file ./page.html
 home-signal display clear
 
@@ -100,7 +102,103 @@ home-signal screenshot --display main --out /tmp/signal.png
 
 `device set` writes only the fields you pass. `device blink` reads power, brightness, hue, saturation, and color temperature, blinks, writes that snapshot back, and reads the light again. A mismatch exits 8.
 
-`display message` and `display html` do not invent a page. Empty text, a missing HTML argument, or an empty file exits 1 and leaves the current page alone. `display html` loads the file or string unchanged; it is not wrapped in the message template. After a show, the agent reads back the SHA-256 of the page and its title. The JSON result includes `contentHash`, `title`, and `verified`. A mismatch exits 4 with code `display_mismatch`.
+`display message`, `display layout`, and `display html` do not invent a page. Empty text, an empty or invalid layout spec, a missing HTML argument, or an empty file exits 1 and leaves the current page alone. `display html` loads the file or string unchanged; it is not wrapped in a template. `display layout` renders a module spec to HTML and shows those bytes through the same read-back. After a show, the agent reads back the SHA-256 of the page and its title. The JSON result includes `contentHash`, `title`, and `verified`. A layout result also includes `html`. A mismatch exits 4 with code `display_mismatch`.
+
+## Display layout
+
+`display layout` takes a JSON spec and paints it on a fixed 16:9 canvas. Modules are equal rows. Adding or removing one resizes the rest, so the canvas stays full. Pass `--file` or `--spec`, not both. `--theme` overrides the spec. Built-in themes are `default` (neutral) and `moonlit-autumn`. Omit `theme` to use `default`. An unknown theme, unknown module, or blank field is an error.
+
+The stage padding is the `xl` space token. Module rows use a grid with `gap: var(--space-l)` and `grid-auto-rows: minmax(0, 1fr)`. Each block is a flex column with `flex: 1`. A `columns` module lays its sections on a grid with the same gap. Text starts at a type token and steps down that scale when it would overflow.
+
+Type tokens use a 1.5 ratio between steps. `xl` is 8vh and `xxl` is 12vh (1.5 times `xl`).
+
+| Token | CSS | Size |
+| --- | --- | --- |
+| xs | `--type-xs` | 1.6vh |
+| s | `--type-s` | 2.4vh |
+| m | `--type-m` | 3.6vh |
+| l | `--type-l` | 5.4vh |
+| xl | `--type-xl` | 8vh |
+| xxl | `--type-xxl` | 12vh |
+
+| Token | CSS | Size | Role |
+| --- | --- | --- | --- |
+| xs | `--space-xs` | 0.8vh | |
+| s | `--space-s` | 1.6vh | |
+| m | `--space-m` | 2.4vh | |
+| l | `--space-l` | 4vh | Grid gap |
+| xl | `--space-xl` | 6vh | Page margin |
+
+Default primary sizes: header title `xl`, message `xxl`, column items `s`, list items `m`, summary value `xl`, alert text `l`. Labels use `s`. Section headings use `m`. Set `size` on a module to override its primary text (`xs`, `s`, `m`, `l`, `xl`, `xxl`).
+
+| Module | Required | Optional |
+| --- | --- | --- |
+| `header` | `title` | `subtitle`, `size` |
+| `message` | `text` | `size` |
+| `columns` | `columns[].items` | `columns[].title`, `size` |
+| `list` | `items` | `title`, `size` |
+| `summary` | `label`, `value` | `detail`, `size` |
+| `alert` | `text` | `title`, `level` (`info`, `warning`, `critical`), `size` |
+
+An item is an object with `text` and optional `leading`, or a string used as `text`. `title` on the spec is the document title. The read-back compares it to the window title. It is not drawn unless a module includes it.
+
+Themes set color and font only. Layout and modules read CSS variables (`--background`, `--foreground`, `--muted`, `--accent`, `--surface`, `--alert`, `--alert-foreground`, `--font`). Add a theme by appending a `DisplayTheme` to `DisplayThemes.all`. Add a module by extending `DisplayModuleKind`, the spec parser, and `DisplayModuleHTML`.
+
+One-line reminder:
+
+```json
+{
+  "title": "Reminder",
+  "theme": "default",
+  "modules": [
+    {
+      "type": "message",
+      "text": "Example reminder"
+    }
+  ]
+}
+```
+
+Multi-section schedule:
+
+```json
+{
+  "title": "Example day",
+  "theme": "moonlit-autumn",
+  "modules": [
+    {
+      "type": "header",
+      "title": "Example day",
+      "subtitle": "Placeholder"
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "title": "Morning",
+          "items": [
+            { "leading": "09:00", "text": "Example item" },
+            { "leading": "10:30", "text": "Example item" }
+          ]
+        },
+        {
+          "title": "Afternoon",
+          "items": [
+            { "leading": "13:00", "text": "Example meeting" },
+            { "leading": "16:00", "text": "Example item" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "summary",
+      "label": "Next",
+      "value": "Example item",
+      "detail": "09:00"
+    }
+  ]
+}
+```
 
 `mirror connect` is a no-op when the target is already selected (`changed: false`). Disconnect behaves the same when it is already off. Updating the signal window does not reconnect AirPlay.
 
@@ -191,6 +289,7 @@ These paths are not executed in CI:
 - Shortcuts fallback, including a shortcut that returns `{"error":...}` when it cannot set a numeric hue.
 - Menu-bar agent launch without a Dock icon, and the borderless signal window on the display named in config.
 - `display message` twice changes the page without a second `mirror connect`.
+- `display layout` on the signal window: one module fills the 16:9 canvas, and adding a module resizes the others without clipping the stage.
 - `mirror status`, `connect`, and `disconnect` for an AirPlay target matched by name and, if you set it, by `device_id`.
 - Window mode: panel-fraction clicks land on Choose Content, Window or App, and Mirror This Window. Adjust `[mirror.clicks]` if they do not. System Events positions and `CGEvent` share a top-left origin; confirm that on the machine you use.
 - A second display: probed origin and `input park --display <name>`.

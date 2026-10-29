@@ -188,6 +188,11 @@ enum CLIArgv {
 
 enum IPCCall {
     static func perform(global: GlobalOptions, command: String, method: String, params: JSONValue = .object([:])) async throws {
+        let result = try await send(global: global, method: method, params: params)
+        CLIRuntime.succeed(command: command, global: global, value: result)
+    }
+
+    static func send(global: GlobalOptions, method: String, params: JSONValue = .object([:])) async throws -> JSONValue {
         let request = IPCRequest(method: method, params: params, dryRun: global.dryRun)
         let response: IPCResponse
         do {
@@ -204,7 +209,7 @@ enum IPCCall {
         guard let result = response.result else {
             throw HomeSignalError.backend("The agent returned an empty response.")
         }
-        CLIRuntime.succeed(command: command, global: global, value: result)
+        return result
     }
 }
 
