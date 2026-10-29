@@ -307,9 +307,9 @@ struct SceneRun: AsyncParsableCommand {
 struct DisplayCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "display",
-        abstract: "Show a message or schedule on the agent's full-screen window.",
-        discussion: "Updating the window does not reconnect AirPlay. A show with no content fails and leaves the current page in place. `display html` loads caller HTML unchanged. The JSON result includes the content hash and title read back from the window.",
-        subcommands: [DisplayMessage.self, DisplaySchedule.self, DisplayHTML.self, DisplayClear.self, DisplayStatus.self]
+        abstract: "Show a message, schedule, layout, or HTML page on the agent's full-screen window.",
+        discussion: "Updating the window does not reconnect AirPlay. A show with no content fails and leaves the current page in place. `display layout` renders a JSON module spec into the 16:9 canvas. `display html` loads caller HTML unchanged. The JSON result includes the content hash and title read back from the window.",
+        subcommands: [DisplayMessage.self, DisplaySchedule.self, DisplayLayoutCommand.self, DisplayHTML.self, DisplayClear.self, DisplayStatus.self]
     )
 }
 
@@ -356,6 +356,71 @@ struct DisplaySchedule: AsyncParsableCommand {
         _ = try DisplayRendering.prepare(doc)
         let params = DisplayShowParams(document: doc, present: !noPresent)
         try await IPCCall.perform(global: global, command: "display.schedule", method: IPCMethod.displayShow, params: try params.jsonValue())
+    }
+}
+
+struct DisplayLayoutCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "layout",
+        abstract: "Render a JSON module spec onto the 16:9 canvas and show it.",
+        discussion: """
+        Pass --file or --spec, not both. The spec is a JSON object with title, an optional theme \
+        (default or moonlit-autumn), and a non-empty modules array. Module types are header, message, \
+        columns, list, summary, and alert. Blocks share a grid with gap equal to the l space token and \
+        flex to fill the canvas. Text uses the type scale and steps down when it would overflow. \
+        An empty file, empty spec, unknown theme, unknown module, or blank module text is an error and \
+        does not replace the page. The rendered HTML is shown as-is and read back like display html. \
+        The result includes contentHash, title, verified, and html. The same spec renders the same page. \
+        display html still shows caller HTML unchanged.
+        """
+    )
+    @OptionGroup var global: GlobalOptions
+    @Option(name: .long, help: "UTF-8 JSON spec file.") var file: String?
+    @Option(name: .long, help: "JSON spec. Use --file for a longer document.") var spec: String?
+    @Option(name: .long, help: "Theme id. Overrides the spec. Built-in themes: default, moonlit-autumn.") var theme: String?
+    @Flag(name: .customLong("no-present"), help: "Do not bring the window forward.") var noPresent = false
+
+    func run() async throws {
+        let json = try loadJSON()
+        let markup = try DisplayLayout.render(json: json, theme: theme)
+        let config = try CLIRuntime.load(global)
+        let doc = document(from: config, kind: DisplayKind.layout, title: nil, message: nil, rows: [], html: markup)
+        _ = try DisplayRendering.prepare(doc)
+        let result = try await IPCCall.send(
+            global: global,
+            method: IPCMethod.displayShow,
+            params: try DisplayShowParams(document: doc, present: !noPresent).jsonValue()
+        )
+        var fields = result.object ?? [:]
+        fields["html"] = .string(markup)
+        CLIRuntime.succeed(command: "display.layout", global: global, value: .object(fields))
+    }
+
+    private func loadJSON() throws -> String {
+        if file != nil && spec != nil {
+            throw HomeSignalError.usage("Pass only one of --file or --spec.")
+        }
+        if let spec {
+            guard !spec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("Layout spec is empty.")
+            }
+            return spec
+        }
+        if let file {
+            let path = HomeSignalPaths.expand(file)
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw HomeSignalError.displayRefusal("Layout file not found: \(path).")
+            }
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw HomeSignalError.displayRefusal("Layout file must be UTF-8: \(path).")
+            }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.displayRefusal("Layout file is empty.")
+            }
+            return text
+        }
+        throw HomeSignalError.displayRefusal("display layout needs --file or --spec.")
     }
 }
 
@@ -580,6 +645,7 @@ enum CommandCatalog {
         CommandSpec(name: "scene run", summary: "Run a scene.", mutating: true, idempotent: false, arguments: ["name"], options: []),
         CommandSpec(name: "display message", summary: "Show text on the signal window. Empty text is an error.", mutating: true, idempotent: true, arguments: ["text"], options: ["title", "no-present"]),
         CommandSpec(name: "display schedule", summary: "Show a title and time/label rows.", mutating: true, idempotent: true, arguments: [], options: ["title", "row", "rows-json", "no-present"]),
+        CommandSpec(name: "display layout", summary: "Render a JSON module spec on the 16:9 canvas and verify the read-back. Empty or invalid specs are an error.", mutating: true, idempotent: true, arguments: [], options: ["file", "spec", "theme", "no-present"]),
         CommandSpec(name: "display html", summary: "Show caller HTML exactly and verify the read-back hash.", mutating: true, idempotent: true, arguments: [], options: ["file", "html", "no-present"]),
         CommandSpec(name: "display clear", summary: "Show an empty page.", mutating: true, idempotent: true, arguments: [], options: ["no-present"]),
         CommandSpec(name: "display status", summary: "Current signal document.", mutating: false, idempotent: true, arguments: [], options: []),

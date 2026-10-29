@@ -61,6 +61,11 @@ public enum DisplayRendering {
                 throw HomeSignalError.usage("display html needs a file or an HTML string. Refusing to replace custom content.")
             }
             return html
+        case DisplayKind.layout:
+            guard let html = document.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw HomeSignalError.usage("display layout needs rendered HTML. Refusing to replace the screen.")
+            }
+            return html
         case DisplayKind.clear:
             return renderGenerated(document)
         default:

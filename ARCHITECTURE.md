@@ -60,6 +60,12 @@ HomeKit writes numeric characteristics and converts color temperature between Ke
 4. Add a CLI subcommand whose `--help` text states whether it is idempotent, and add a row to `CommandCatalog`.
 5. Provide a simulated implementation and a test that runs CLI → socket → runtime without macOS.
 
-`display html` passes caller markup through unchanged. `DisplayRendering` rejects an empty message, schedule, or HTML document before anything is shown. The channel returns the hash and title of the page it actually loaded, and the runtime fails the request when those differ from the request.
+`display html` passes caller markup through unchanged. `display layout` renders a JSON module spec to HTML in `DisplayLayout`, then shows those bytes with kind `layout`. `DisplayRendering` rejects an empty message, schedule, layout, or HTML document before anything is shown. The channel returns the hash and title of the page it actually loaded, and the runtime fails the request when those differ from the request.
+
+## Display layout
+
+`DisplayTokens` is the type and space scale (vh). `DisplayThemes` is color and font. `DisplayLayout` paints a 16:9 stage, a grid of blocks (`gap` is `--space-l`, each block `flex: 1`), and the module markup. Modules are `header`, `message`, `columns`, `list`, `summary`, and `alert`. Text uses a type token and steps down that scale when the block would overflow.
+
+Add a theme by appending a `DisplayTheme` to `DisplayThemes.all`. Add a module by extending `DisplayModuleKind`, validation in the spec parser, and `DisplayModuleHTML`. Layout CSS reads tokens and theme variables. It does not name a theme.
 
 Channels that exist today: lights, scenes, display, mirror, input, capture.
