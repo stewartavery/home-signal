@@ -173,14 +173,14 @@ final class HomeSignalTests: XCTestCase {
 
     func testMirrorConnectIsIdempotent() async throws {
         let mirror = SimulatedMirror()
-        let first = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false)
+        let first = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false, debugFile: nil)
         XCTAssertTrue(first.changed)
-        let second = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false)
+        let second = try await mirror.connect(target: "TV", mode: "window", deviceID: "", dryRun: false, debugAX: false, debugFile: nil)
         XCTAssertFalse(second.changed)
         XCTAssertTrue(second.connected)
-        let dry = await mirror.disconnect(target: "TV", dryRun: true, debugAX: false)
+        let dry = await mirror.disconnect(target: "TV", dryRun: true, debugAX: false, debugFile: nil)
         XCTAssertTrue(dry.changed)
-        let still = await mirror.status(target: "TV", debugAX: false)
+        let still = await mirror.status(target: "TV", debugAX: false, debugFile: nil)
         XCTAssertTrue(still.connected)
     }
 

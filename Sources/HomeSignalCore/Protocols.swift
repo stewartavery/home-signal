@@ -47,10 +47,10 @@ public struct EmptyAirPlayBrowser: AirPlayDiscovering {
 }
 
 public protocol MirrorChannel: Sendable {
-    func status(target: String, debugAX: Bool) async throws -> MirrorStatus
-    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus
-    func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus
-    func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult
+    func status(target: String, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus
+    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus
+    func disconnect(target: String, dryRun: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus
+    func list(discover: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorListResult
 }
 
 public protocol InputChannel: Sendable {

@@ -571,7 +571,8 @@ struct MirrorListCommand: AsyncParsableCommand {
     var discover = false
 
     func run() async throws {
-        let params = MirrorListParams(discover: discover, debugAX: debugOptions.debugAX || debugOptions.debugAXFile != nil)
+        let debugFile = debugOptions.debugAXFile.map { HomeSignalPaths.expand($0) }
+        let params = MirrorListParams(discover: discover, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile)
         let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorList, params: try params.jsonValue(), command: "mirror.list")
         let listed = try result.decode(MirrorListResult.self)
         if global.json {
@@ -585,7 +586,7 @@ struct MirrorListCommand: AsyncParsableCommand {
             }
             CLIRuntime.hooks.sink.writeOut(lines.joined(separator: "\n") + "\n")
         }
-        try writeAX(listed.accessibility, debug: debugOptions)
+        writeAX(listed.accessibility, debug: debugOptions)
     }
 }
 
@@ -596,12 +597,12 @@ struct MirrorStatusCommand: AsyncParsableCommand {
     @Option(name: .long, help: "AirPlay name. Defaults to mirror.target in config.") var target: String?
     func run() async throws {
         let name = try target ?? CLIRuntime.load(global).mirror.target
-        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
+        let debugFile = debugOptions.debugAXFile.map { HomeSignalPaths.expand($0) }
         let result = try await mirrorSend(
             global: global,
             debug: debugOptions,
             method: IPCMethod.mirrorStatus,
-            params: try MirrorTargetParams(target: name, debugAX: debug).jsonValue(),
+            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile).jsonValue(),
             command: "mirror.status"
         )
         CLIRuntime.succeed(command: "mirror.status", global: global, value: result)
@@ -621,12 +622,13 @@ struct MirrorConnectCommand: AsyncParsableCommand {
     @Option(name: .long, help: "window or display. Defaults to config.") var mode: String?
     func run() async throws {
         let config = try CLIRuntime.load(global)
-        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
+        let debugFile = debugOptions.debugAXFile.map { HomeSignalPaths.expand($0) }
         let params = MirrorConnectParams(
             target: target ?? config.mirror.target,
             mode: mode ?? config.mirror.mode,
             deviceID: deviceID ?? config.mirror.deviceID,
-            debugAX: debug
+            debugAX: debugOptions.debugAX || debugFile != nil,
+            debugFile: debugFile
         )
         let result = try await mirrorSend(global: global, debug: debugOptions, method: IPCMethod.mirrorConnect, params: try params.jsonValue(), command: "mirror.connect")
         CLIRuntime.succeed(command: "mirror.connect", global: global, value: result)
@@ -644,12 +646,12 @@ struct MirrorDisconnectCommand: AsyncParsableCommand {
     @Option(name: .long, help: "AirPlay name. Defaults to config.") var target: String?
     func run() async throws {
         let name = try target ?? CLIRuntime.load(global).mirror.target
-        let debug = debugOptions.debugAX || debugOptions.debugAXFile != nil
+        let debugFile = debugOptions.debugAXFile.map { HomeSignalPaths.expand($0) }
         let result = try await mirrorSend(
             global: global,
             debug: debugOptions,
             method: IPCMethod.mirrorDisconnect,
-            params: try MirrorTargetParams(target: name, debugAX: debug).jsonValue(),
+            params: try MirrorTargetParams(target: name, debugAX: debugOptions.debugAX || debugFile != nil, debugFile: debugFile).jsonValue(),
             command: "mirror.disconnect"
         )
         CLIRuntime.succeed(command: "mirror.disconnect", global: global, value: result)
@@ -657,29 +659,14 @@ struct MirrorDisconnectCommand: AsyncParsableCommand {
 }
 
 private func mirrorSend(global: GlobalOptions, debug: MirrorDebugOptions, method: String, params: JSONValue, command: String) async throws -> JSONValue {
-    do {
-        return try await IPCCall.send(global: global, method: method, params: params)
-    } catch let error as HomeSignalError {
-        try writeAXText(String(describing: error), debug: debug)
-        throw error
-    }
+    _ = (debug, command)
+    return try await IPCCall.send(global: global, method: method, params: params)
 }
 
-private func writeAX(_ steps: [MirrorAXStep], debug: MirrorDebugOptions) throws {
-    guard debug.debugAX || debug.debugAXFile != nil else { return }
+private func writeAX(_ steps: [MirrorAXStep], debug: MirrorDebugOptions) {
+    guard debug.debugAX, !steps.isEmpty else { return }
     let text = steps.map { "[\($0.step)]\n\($0.tree)" }.joined(separator: "\n")
-    try writeAXText(text, debug: debug)
-}
-
-private func writeAXText(_ text: String, debug: MirrorDebugOptions) throws {
-    guard !text.isEmpty else { return }
-    if debug.debugAX {
-        CLIRuntime.hooks.sink.writeErr(text.hasSuffix("\n") ? text : text + "\n")
-    }
-    if let path = debug.debugAXFile {
-        let file = HomeSignalPaths.expand(path)
-        try Data(text.utf8).write(to: URL(fileURLWithPath: file))
-    }
+    CLIRuntime.hooks.sink.writeErr(text.hasSuffix("\n") ? text : text + "\n")
 }
 
 struct InputCommand: AsyncParsableCommand {

@@ -94,7 +94,7 @@ public struct DisplaySession: Sendable {
             return found
         }
         do {
-            _ = try await mirror.connect(target: target.name, mode: mode, deviceID: target.deviceID, dryRun: false, debugAX: false)
+            _ = try await mirror.connect(target: target.name, mode: mode, deviceID: target.deviceID, dryRun: false, debugAX: false, debugFile: nil)
         } catch let error as HomeSignalError {
             throw HomeSignalError.displayStep("reconnect", error.message, exitCode: error.exitCode)
         } catch {

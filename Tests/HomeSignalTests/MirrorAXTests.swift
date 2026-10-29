@@ -70,6 +70,14 @@ final class MirrorAXTests: XCTestCase {
         XCTAssertTrue(MirrorAX.permissionProblem("System Events got an error: Can’t get window 1 of process \"ControlCenter\". (-1728)"))
         XCTAssertTrue(MirrorAX.permissionProblem("osascript is not allowed assistive access"))
         XCTAssertFalse(MirrorAX.permissionProblem("AirPlay target not found: Example TV"))
+        let syntax = "64:72: syntax error: Expected end of line but found identifier. (-2741)"
+        XCTAssertTrue(MirrorAX.syntaxProblem(syntax))
+        XCTAssertFalse(MirrorAX.permissionProblem(syntax))
+        let bug = MirrorAX.automationFailure(syntax)
+        XCTAssertEqual(bug.code, "script_bug")
+        XCTAssertEqual(bug.exitCode, 4)
+        XCTAssertFalse(bug.hint?.contains("Grant Accessibility") == true)
+        XCTAssertEqual(MirrorScript.appleString("Example's \"TV\""), "\"Example's \\\"TV\\\"\"")
     }
 
     func testNotFoundListsTheNamesThatWereRead() {
@@ -107,7 +115,7 @@ final class MirrorAXTests: XCTestCase {
             clicker: { _ in },
             sleeper: ImmediateSleeper()
         )
-        let status = try await mirror.connect(target: "Example TV", mode: "display", deviceID: "", dryRun: false, debugAX: true)
+        let status = try await mirror.connect(target: "Example TV", mode: "display", deviceID: "", dryRun: false, debugAX: true, debugFile: nil)
         XCTAssertTrue(status.connected)
         XCTAssertTrue(status.changed)
         XCTAssertTrue(runner.scripts.contains { $0.contains("dump-menubar") })
@@ -127,7 +135,7 @@ final class MirrorAXTests: XCTestCase {
             sleeper: ImmediateSleeper()
         )
         do {
-            _ = try await mirror.status(target: "Example TV", debugAX: false)
+            _ = try await mirror.status(target: "Example TV", debugAX: false, debugFile: nil)
             XCTFail("expected a permission error")
         } catch let error as HomeSignalError {
             XCTAssertEqual(error.code, "permission")
@@ -144,6 +152,58 @@ final class MirrorAXTests: XCTestCase {
         let xml = "<key>com.apple.developer.homekit</key>\n<true/>"
         XCTAssertTrue(HomeKitBackendGate.plistGrantsHomeKit(xml))
         XCTAssertFalse(HomeKitBackendGate.plistGrantsHomeKit("<key>com.apple.developer.homekit</key><false/>"))
+    }
+
+    func testDebugFileKeepsEarlierStepsWhenALaterScriptFails() async throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("hs-ax-\(UUID().uuidString).txt").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let runner = QueueRunner(outputs: [
+            ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
+            CommandOutput(status: 1, stdout: Data(), stderr: Data("64:72: syntax error: Expected end of line but found identifier. (-2741)".utf8)),
+        ])
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper()
+        )
+        do {
+            _ = try await mirror.list(discover: false, debugAX: true, debugFile: path)
+            XCTFail("expected a script bug")
+        } catch let error as HomeSignalError {
+            XCTAssertEqual(error.code, "script_bug")
+            XCTAssertEqual(error.exitCode, 4)
+            XCTAssertTrue(error.hint?.contains("[menubar]") == true)
+        }
+        let saved = try String(contentsOfFile: path, encoding: .utf8)
+        XCTAssertTrue(saved.contains("[menubar]"))
+        XCTAssertTrue(saved.contains("Control Center"))
+        XCTAssertTrue(saved.contains("[error]"))
+        XCTAssertTrue(saved.contains("-2741"))
+    }
+
+    func testGeneratedAppleScriptsCompile() throws {
+        #if os(macOS)
+        for script in MirrorScript.generated {
+            let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("hs-\(UUID().uuidString).applescript")
+            try Data(script.utf8).write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+            let output = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("hs-\(UUID().uuidString).scpt")
+            defer { try? FileManager.default.removeItem(at: output) }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osacompile")
+            process.arguments = ["-o", output.path, url.path]
+            let stderr = Pipe()
+            process.standardError = stderr
+            try process.run()
+            process.waitUntilExit()
+            let detail = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            XCTAssertEqual(process.terminationStatus, 0, detail + "\n" + script)
+        }
+        #else
+        throw XCTSkip("osacompile is only available on macOS")
+        #endif
     }
 
     func testInstallScriptUsesAUserPrefixAndDoesNotCallSudo() throws {

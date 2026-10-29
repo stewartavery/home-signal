@@ -54,6 +54,15 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         HomeSignalError(code: "config", message: message, hint: hint, exitCode: 2)
     }
 
+    public static func scriptBug(_ detail: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "script_bug",
+            message: "The Screen Mirroring script failed to compile. \(detail)",
+            hint: "This is an internal home-signal bug, not a permissions problem.",
+            exitCode: 4
+        )
+    }
+
     public static func permissionDenied(_ detail: String) -> HomeSignalError {
         HomeSignalError(
             code: "permission",

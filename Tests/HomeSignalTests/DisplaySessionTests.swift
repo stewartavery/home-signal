@@ -433,13 +433,13 @@ actor LinkingMirror: MirrorChannel {
         self.addOnConnect = addOnConnect
     }
 
-    func status(target: String, debugAX: Bool) async throws -> MirrorStatus {
-        _ = debugAX
+    func status(target: String, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus {
+        _ = (debugAX, debugFile)
         return MirrorStatus(target: target, connected: false, changed: false)
     }
 
-    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
-        _ = debugAX
+    func connect(target: String, mode: String, deviceID: String, dryRun: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus {
+        _ = (debugAX, debugFile)
         connects += 1
         connectNames.append(target)
         connectIDs.append(deviceID)
@@ -449,13 +449,13 @@ actor LinkingMirror: MirrorChannel {
         return MirrorStatus(target: target, connected: true, mode: mode, changed: true)
     }
 
-    func list(discover: Bool, debugAX: Bool) async throws -> MirrorListResult {
-        _ = (discover, debugAX)
+    func list(discover: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorListResult {
+        _ = (discover, debugAX, debugFile)
         return MirrorListResult(controlCenter: [], discovered: [], routes: [], accessibility: [])
     }
 
-    func disconnect(target: String, dryRun: Bool, debugAX: Bool) async throws -> MirrorStatus {
-        _ = debugAX
+    func disconnect(target: String, dryRun: Bool, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus {
+        _ = (debugAX, debugFile)
         _ = dryRun
         return MirrorStatus(target: target, connected: false, changed: true)
     }

@@ -153,7 +153,7 @@ public actor AgentRuntime {
             return try await stopDisplay(dryRun: request.dryRun)
         case IPCMethod.mirrorStatus:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.status(target: params.target, debugAX: params.debugAX).jsonValue()
+            return try await mirror.status(target: params.target, debugAX: params.debugAX, debugFile: params.debugFile).jsonValue()
         case IPCMethod.mirrorConnect:
             let params = try request.params.decode(MirrorConnectParams.self)
             return try await mirror.connect(
@@ -161,14 +161,15 @@ public actor AgentRuntime {
                 mode: params.mode,
                 deviceID: params.deviceID,
                 dryRun: request.dryRun,
-                debugAX: params.debugAX
+                debugAX: params.debugAX,
+                debugFile: params.debugFile
             ).jsonValue()
         case IPCMethod.mirrorDisconnect:
             let params = try request.params.decode(MirrorTargetParams.self)
-            return try await mirror.disconnect(target: params.target, dryRun: request.dryRun, debugAX: params.debugAX).jsonValue()
+            return try await mirror.disconnect(target: params.target, dryRun: request.dryRun, debugAX: params.debugAX, debugFile: params.debugFile).jsonValue()
         case IPCMethod.mirrorList:
             let params = try request.params.decode(MirrorListParams.self)
-            var listed = try await mirror.list(discover: false, debugAX: params.debugAX)
+            var listed = try await mirror.list(discover: false, debugAX: params.debugAX, debugFile: params.debugFile)
             if params.discover {
                 listed = listed.with(discovered: await browser.discover(timeoutSeconds: 3))
             }

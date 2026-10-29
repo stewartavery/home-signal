@@ -134,13 +134,37 @@ public enum MirrorAX {
         return collapsed.lowercased()
     }
 
+    public static func syntaxProblem(_ detail: String) -> Bool {
+        let lowered = detail.lowercased()
+        return lowered.contains("-2741") || lowered.contains("-2740") || lowered.contains("syntax error")
+    }
+
     public static func permissionProblem(_ detail: String) -> Bool {
+        if syntaxProblem(detail) { return false }
         let lowered = detail.lowercased()
         if lowered.contains("window 1 of process") { return true }
         if lowered.contains("not authorized to send apple events") { return true }
         if lowered.contains("not allowed assistive") { return true }
         if lowered.contains("assistive access") { return true }
         return false
+    }
+
+    public static func automationFailure(_ detail: String) -> HomeSignalError {
+        if syntaxProblem(detail) {
+            return HomeSignalError(
+                code: "script_bug",
+                message: "The Screen Mirroring script failed to compile. \(detail)",
+                hint: "This is an internal home-signal bug, not a permissions problem.",
+                exitCode: 4
+            )
+        }
+        if permissionProblem(detail) {
+            return HomeSignalError.permissionDenied(detail)
+        }
+        return HomeSignalError.backend(
+            detail.isEmpty ? "Control Center automation failed." : detail,
+            hint: "Pass --debug-ax to keep each accessibility step. A compile error is not a permissions failure."
+        )
     }
 
     public static func isScreenMirroringLabel(_ raw: String) -> Bool {
