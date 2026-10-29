@@ -11,11 +11,10 @@ jobs:
   swift:
     name: Swift tests
     runs-on: ubuntu-24.04
+    container:
+      image: swift:6.2.4@sha256:e508ef1e4be68087f720de622b91cbf1e32799a7aa96134b35e6f1a1d656db7a
     steps:
       - uses: actions/checkout@v4
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "6.2.4"
       - name: Test
         run: swift test
 
