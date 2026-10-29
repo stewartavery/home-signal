@@ -107,29 +107,58 @@ private enum Collector {
         record(className: "AVOutputContext", selector: "setOutputDevice:options:completionHandler:", instance: true, selectors: &selectors, encodings: &encodings)
 
         var rawDevices: [(object: AnyObject, candidate: RouteCandidate)] = []
-        var screenObject: AnyObject?
+        var trace: [String] = []
         var featuresKnown = false
+        var invoked: [String: AnyObject] = [:]
 
-        for pair in zeroArg where screenSelectors.contains(pair.1) {
-            if screenObject == nil, let object = callClass(pair.0, pair.1, called: &called) {
-                screenObject = object
+        for pair in zeroArg {
+            let key = "\(pair.0).\(pair.1)"
+            let object = callClass(pair.0, pair.1, called: &called)
+            if let object { invoked[key] = object }
+            if screenSelectors.contains(pair.1) {
+                trace.append(describeContext(pair.0, pair.1, object))
             }
         }
-        for pair in zeroArg {
-            guard let object = callClass(pair.0, pair.1, called: &called) else { continue }
+        let screenObject = preferredScreen(invoked)
+        if screenObject == nil {
+            trace.append("screenContext=no reason=every shared screen-context selector returned nil")
+        } else {
+            trace.append("screenContext=yes")
+        }
+        trace.append(contentsOf: methodDump("AVOutputContext"))
+        trace.append(contentsOf: methodDump("AVOutputDeviceDiscoverySession"))
+        trace.append(contentsOf: methodDump("MRAVRoutingDiscoverySession"))
+
+        for object in invoked.values {
             let read = readDevices(object, selectedIDs: ids(of: screenObject))
             featuresKnown = featuresKnown || read.known
             rawDevices.append(contentsOf: read.devices)
         }
-        if let session = callClassUInt("MRAVRoutingDiscoverySession", "discoverySessionWithEndpointFeatures:", 7, called: &called) {
-            let read = readDevices(session, selectedIDs: ids(of: screenObject))
-            featuresKnown = featuresKnown || read.known
-            rawDevices.append(contentsOf: read.devices)
+        let masks: [UInt] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 0xFFFF_FFFF]
+        var sessions: [AnyObject] = []
+        for mask in masks {
+            if let session = allocFeatures("AVOutputDeviceDiscoverySession", "initWithDeviceFeatures:", mask, called: &called, encodings: &encodings, selectors: &selectors) {
+                setMode(session, className: "AVOutputDeviceDiscoverySession", mode: 2, called: &called, encodings: &encodings, selectors: &selectors)
+                sessions.append(session)
+                trace.append("discovery AVOutputDeviceDiscoverySession mask=\(mask) mode=2 session=yes")
+            }
+            if let session = callClassUInt("MRAVRoutingDiscoverySession", "discoverySessionWithEndpointFeatures:", mask, called: &called) {
+                setMode(session, className: "MRAVRoutingDiscoverySession", mode: 3, called: &called, encodings: &encodings, selectors: &selectors)
+                sessions.append(session)
+                trace.append("discovery MRAVRoutingDiscoverySession mask=\(mask) mode=3 session=yes")
+            }
         }
-        if let session = callClassUIntBool("MRAVRoutingDiscoverySession", "discoverySessionWithEndpointFeatures:enableThrottling:", 7, false, called: &called) {
+        if !sessions.isEmpty {
+            let until = Date().addingTimeInterval(4)
+            while Date() < until {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.25))
+            }
+        }
+        for session in sessions {
             let read = readDevices(session, selectedIDs: ids(of: screenObject))
             featuresKnown = featuresKnown || read.known
             rawDevices.append(contentsOf: read.devices)
+            trace.append("discoveryRead devices=\(read.devices.count)")
         }
 
         var seen: Set<String> = []
@@ -144,19 +173,19 @@ private enum Collector {
         }
 
         let note = screenObject == nil
-            ? "No screen-mirroring context was found. Shared audio and video output contexts do not mirror the display."
-            : "A screen-mirroring context was found."
+            ? "screenContext=no because every shared screen-context selector returned nil. Shared audio contexts do not mirror the display."
+            : "A screen-mirroring context object was returned."
         var error: String?
         if let apply, let screenObject {
             let key = apply.identifier
             if apply.enabled {
                 if let device = objects[key] {
-                    error = setDevices(screenObject, [device])
+                    error = setOutputDevice(screenObject, device, called: &called, encodings: &encodings, selectors: &selectors)
                 } else {
                     error = "The routing device \(key) was not held for the screen context."
                 }
             } else {
-                error = setDevices(screenObject, [])
+                error = "Clearing the screen route was not called. setOutputDevice:options:completionHandler: needs a device."
             }
         }
         let snapshot = RouteSnapshot(
@@ -167,7 +196,8 @@ private enum Collector {
             featuresKnown: featuresKnown,
             note: note,
             encodings: encodings,
-            called: called
+            called: called,
+            trace: trace
         )
         return CollectResult(snapshot: snapshot, error: error)
     }
@@ -199,28 +229,24 @@ private enum Collector {
     private static func callClass(_ className: String, _ selector: String, called: inout [String: Bool]) -> AnyObject? {
         guard let cls = NSClassFromString(className), let method = class_getClassMethod(cls, NSSelectorFromString(selector)) else { return nil }
         guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsObject(encoding) else { return nil }
-        typealias Fn = @convention(c) (AnyClass, Selector) -> Unmanaged<AnyObject>?
+        typealias Fn = @convention(c) (AnyClass, Selector) -> UnsafeMutableRawPointer?
         let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
         called["\(className).\(selector)"] = true
-        return fn(cls, NSSelectorFromString(selector))?.takeUnretainedValue()
+        return adopt(fn(cls, NSSelectorFromString(selector)))
     }
 
     private static func callClassUInt(_ className: String, _ selector: String, _ value: UInt, called: inout [String: Bool]) -> AnyObject? {
         guard let cls = NSClassFromString(className), let method = class_getClassMethod(cls, NSSelectorFromString(selector)) else { return nil }
         guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsObject(encoding) else { return nil }
-        typealias Fn = @convention(c) (AnyClass, Selector, UInt) -> Unmanaged<AnyObject>?
+        typealias Fn = @convention(c) (AnyClass, Selector, UInt) -> UnsafeMutableRawPointer?
         let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
         called["\(className).\(selector)"] = true
-        return fn(cls, NSSelectorFromString(selector), value)?.takeUnretainedValue()
+        return adopt(fn(cls, NSSelectorFromString(selector), value))
     }
 
-    private static func callClassUIntBool(_ className: String, _ selector: String, _ value: UInt, _ flag: Bool, called: inout [String: Bool]) -> AnyObject? {
-        guard let cls = NSClassFromString(className), let method = class_getClassMethod(cls, NSSelectorFromString(selector)) else { return nil }
-        guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsObject(encoding) else { return nil }
-        typealias Fn = @convention(c) (AnyClass, Selector, UInt, UInt8) -> Unmanaged<AnyObject>?
-        let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
-        called["\(className).\(selector)"] = true
-        return fn(cls, NSSelectorFromString(selector), value, flag ? 1 : 0)?.takeUnretainedValue()
+    private static func adopt(_ raw: UnsafeMutableRawPointer?) -> AnyObject? {
+        guard let raw else { return nil }
+        return Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
     }
 
     private static func readDevices(_ root: AnyObject, selectedIDs: Set<String>) -> (devices: [(object: AnyObject, candidate: RouteCandidate)], known: Bool) {
@@ -239,7 +265,10 @@ private enum Collector {
 
     private static func candidate(_ object: AnyObject, selectedIDs: Set<String>) -> (candidate: RouteCandidate, known: Bool) {
         let name = text(object, "name") ?? text(object, "deviceName") ?? ""
-        let identifier = text(object, "identifier") ?? text(object, "deviceID") ?? text(object, "uniqueIdentifier") ?? ""
+        let identifier = text(object, "deviceID") ?? text(object, "identifier") ?? text(object, "uniqueIdentifier") ?? ""
+        let deviceType = detail(object, "deviceType")
+        let deviceSubtype = detail(object, "deviceSubtype") ?? detail(object, "deviceSubType")
+        let featuresText = detail(object, "features") ?? detail(object, "deviceFeatures") ?? ""
         var video = false
         var screen = false
         var known = false
@@ -263,7 +292,7 @@ private enum Collector {
         }
         let local = bool(object, "isLocalDevice") ?? false
         let selected = !identifier.isEmpty && selectedIDs.contains(identifier)
-        return (RouteCandidate(name: name, identifier: identifier, video: video, screen: screen, selected: selected, local: local), known)
+        return (RouteCandidate(name: name, identifier: identifier, video: video, screen: screen, selected: selected, local: local, deviceType: deviceType ?? "", deviceSubtype: deviceSubtype ?? "", featuresText: featuresText), known)
     }
 
     private static func ids(of object: AnyObject?) -> Set<String> {
@@ -285,6 +314,29 @@ private enum Collector {
         return nil
     }
 
+    private static func detail(_ object: AnyObject, _ name: String) -> String? {
+        let sel = NSSelectorFromString(name)
+        guard let cls = object_getClass(object), let method = class_getInstanceMethod(cls, sel) else { return nil }
+        guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }) else { return nil }
+        let type = ObjCReturn.primary(encoding)
+        guard !type.isEmpty else { return nil }
+        if type == "@" { return text(object, name) }
+        if ObjCReturn.returnsBool(encoding) { return bool(object, name).map { $0 ? "1" : "0" } }
+        typealias Signed = @convention(c) (AnyObject, Selector) -> Int64
+        typealias Unsigned = @convention(c) (AnyObject, Selector) -> UInt64
+        let imp = method_getImplementation(method)
+        switch type {
+        case "q", "i", "s", "l":
+            let fn = unsafeBitCast(imp, to: Signed.self)
+            return String(fn(object, sel))
+        case "Q", "I", "S", "L":
+            let fn = unsafeBitCast(imp, to: Unsigned.self)
+            return String(fn(object, sel))
+        default:
+            return nil
+        }
+    }
+
     private static func text(_ object: AnyObject, _ name: String) -> String? {
         guard let value = call(object, name) as? String else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -304,30 +356,132 @@ private enum Collector {
         let sel = NSSelectorFromString(name)
         guard let cls = object_getClass(object), let method = class_getInstanceMethod(cls, sel) else { return nil }
         guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsObject(encoding) else { return nil }
-        typealias Fn = @convention(c) (AnyObject, Selector) -> Unmanaged<AnyObject>?
+        typealias Fn = @convention(c) (AnyObject, Selector) -> UnsafeMutableRawPointer?
         let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
-        return fn(object, sel)?.takeUnretainedValue()
+        return adopt(fn(object, sel))
     }
 
-    private static func setDevices(_ context: AnyObject, _ devices: [AnyObject]) -> String? {
-        let name = "setOutputDevices:initiator:withReplyQueue:completion:"
-        let sel = NSSelectorFromString(name)
-        guard let method = class_getInstanceMethod(object_getClass(context), sel) else {
-            return "The screen context has no setOutputDevices:initiator:withReplyQueue:completion:."
+    private static func preferredScreen(_ invoked: [String: AnyObject]) -> AnyObject? {
+        let order = [
+            "AVOutputContext.sharedSystemScreenContext",
+            "AVOutputContext.sharedSystemScreenMirroringContext",
+            "AVOutputContext.sharedScreenMirroringContext",
+            "MRAVOutputContext.sharedSystemScreenContext",
+            "MRAVOutputContext.sharedSystemScreenMirroringContext",
+            "MRAVOutputContext.sharedScreenMirroringContext",
+        ]
+        for key in order {
+            if let object = invoked[key] { return object }
         }
-        if let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), !ObjCReturn.returnsVoid(encoding) {
-            return "setOutputDevices:initiator:withReplyQueue:completion: encoding \(encoding) does not return void."
+        return nil
+    }
+
+    private static func describeContext(_ className: String, _ selector: String, _ object: AnyObject?) -> String {
+        guard let object else { return "screenReturn \(className).\(selector)=nil" }
+        let kind = object_getClass(object).map { String(cString: class_getName($0)) } ?? "object"
+        var parts = ["screenReturn \(className).\(selector)=\(kind)"]
+        if let devices = arrayValue(object, "outputDevices") {
+            parts.append("outputDevices=\(devices.count)")
+        } else if instanceMethod(className, "outputDevices") != nil {
+            parts.append("outputDevices=nil")
         }
-        typealias Done = @convention(block) (NSError?) -> Void
-        typealias Fn = @convention(c) (AnyObject, Selector, NSArray, AnyObject?, DispatchQueue, Done) -> Void
+        if let one = call(object, "outputDevice") {
+            let oneKind = object_getClass(one).map { String(cString: class_getName($0)) } ?? "object"
+            let oneName = text(one, "name") ?? text(one, "deviceName") ?? ""
+            parts.append("outputDevice=\(oneKind)\(oneName.isEmpty ? "" : " name=\(oneName)")")
+        } else if instanceMethod(className, "outputDevice") != nil {
+            parts.append("outputDevice=nil")
+        }
+        if let ident = text(object, "contextID") ?? text(object, "contextUID") {
+            parts.append("contextID=\(ident)")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func methodDump(_ className: String) -> [String] {
+        guard let cls = NSClassFromString(className) else { return ["method \(className) missing"] }
+        var lines = copyMethods(metaclass(cls), className, prefix: "+")
+        lines.append(contentsOf: copyMethods(cls, className, prefix: "-"))
+        if lines.isEmpty { lines.append("method \(className) empty") }
+        return lines.sorted()
+    }
+
+    private static func metaclass(_ cls: AnyClass) -> AnyClass? {
+        objc_getMetaClass(class_getName(cls)) as? AnyClass
+    }
+
+    private static func copyMethods(_ cls: AnyClass?, _ className: String, prefix: String) -> [String] {
+        guard let cls else { return [] }
+        var count: UInt32 = 0
+        guard let list = class_copyMethodList(cls, &count) else { return [] }
+        defer { free(list) }
+        var lines: [String] = []
+        for index in 0..<Int(count) {
+            let method = list[index]
+            let selName = String(cString: sel_getName(method_getName(method)))
+            let encoding = method_getTypeEncoding(method).map { String(cString: $0) } ?? ""
+            lines.append("method \(className) \(prefix)\(selName) encoding=\(encoding)")
+        }
+        return lines
+    }
+
+    private static func allocFeatures(_ className: String, _ selector: String, _ mask: UInt, called: inout [String: Bool], encodings: inout [String: String], selectors: inout [String: Bool]) -> AnyObject? {
+        record(className: className, selector: selector, instance: true, selectors: &selectors, encodings: &encodings)
+        record(className: className, selector: "alloc", instance: false, selectors: &selectors, encodings: &encodings)
+        guard let allocated = callClass(className, "alloc", called: &called) else { return nil }
+        return callInstanceUInt(allocated, selector, mask, className: className, called: &called)
+    }
+
+    private static func callInstanceUInt(_ object: AnyObject, _ selector: String, _ value: UInt, className: String, called: inout [String: Bool]) -> AnyObject? {
+        let sel = NSSelectorFromString(selector)
+        guard let cls = object_getClass(object), let method = class_getInstanceMethod(cls, sel) else { return nil }
+        guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsObject(encoding) else { return nil }
+        typealias Fn = @convention(c) (AnyObject, Selector, UInt) -> UnsafeMutableRawPointer?
+        let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
+        called["\(className).\(selector)"] = true
+        return adopt(fn(object, sel, value))
+    }
+
+    private static func setMode(_ object: AnyObject, className: String, mode: Int, called: inout [String: Bool], encodings: inout [String: String], selectors: inout [String: Bool]) {
+        let selector = "setDiscoveryMode:"
+        record(className: className, selector: selector, instance: true, selectors: &selectors, encodings: &encodings)
+        let sel = NSSelectorFromString(selector)
+        guard let cls = object_getClass(object), let method = class_getInstanceMethod(cls, sel) else { return }
+        guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsVoid(encoding) else { return }
+        typealias Fn = @convention(c) (AnyObject, Selector, Int) -> Void
+        let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
+        called["\(className).\(selector)"] = true
+        fn(object, sel, mode)
+    }
+
+    private static func setOutputDevice(_ context: AnyObject, _ device: AnyObject, called: inout [String: Bool], encodings: inout [String: String], selectors: inout [String: Bool]) -> String? {
+        let selector = "setOutputDevice:options:completionHandler:"
+        let className = object_getClass(context).map { String(cString: class_getName($0)) } ?? "AVOutputContext"
+        record(className: className, selector: selector, instance: true, selectors: &selectors, encodings: &encodings)
+        let sel = NSSelectorFromString(selector)
+        guard let cls = object_getClass(context), let method = class_getInstanceMethod(cls, sel) else {
+            return "The screen context has no setOutputDevice:options:completionHandler:."
+        }
+        guard let encoding = method_getTypeEncoding(method).map({ String(cString: $0) }), ObjCReturn.returnsVoid(encoding) else {
+            let encoding = method_getTypeEncoding(method).map { String(cString: $0) } ?? ""
+            return "setOutputDevice:options:completionHandler: encoding \(encoding) does not return void."
+        }
+        typealias Done = @convention(block) (AnyObject?) -> Void
+        typealias Fn = @convention(c) (AnyObject, Selector, AnyObject, AnyObject?, Done) -> Void
         let fn = unsafeBitCast(method_getImplementation(method), to: Fn.self)
         let box = ApplyBox()
-        let block: Done = { error in
-            box.finish(error?.localizedDescription)
+        let block: Done = { value in
+            if let value, value is NSError {
+                box.finish((value as? NSError)?.localizedDescription ?? "setOutputDevice failed")
+            } else {
+                box.finish(nil)
+            }
         }
-        fn(context, sel, devices as NSArray, nil, DispatchQueue.global(qos: .userInitiated), block)
-        let wait = box.semaphore.wait(timeout: .now() + 8)
-        if wait == .timedOut { return "Setting the screen route timed out." }
+        called["\(className).\(selector)"] = true
+        fn(context, sel, device, nil, block)
+        if box.semaphore.wait(timeout: .now() + 8) == .timedOut {
+            return "setOutputDevice:options:completionHandler: timed out."
+        }
         return box.error
     }
 }
@@ -369,7 +523,7 @@ private enum ProbeClient {
         }
         let finished = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in finished.signal() }
-        if finished.wait(timeout: .now() + 12) == .timedOut {
+        if finished.wait(timeout: .now() + 25) == .timedOut {
             process.terminate()
             _ = finished.wait(timeout: .now() + 2)
         }

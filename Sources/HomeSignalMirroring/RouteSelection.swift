@@ -8,14 +8,20 @@ public struct RouteCandidate: Sendable, Equatable, Codable {
     public var screen: Bool
     public var selected: Bool
     public var local: Bool
+    public var deviceType: String
+    public var deviceSubtype: String
+    public var featuresText: String
 
-    public init(name: String, identifier: String, video: Bool, screen: Bool, selected: Bool, local: Bool) {
+    public init(name: String, identifier: String, video: Bool, screen: Bool, selected: Bool, local: Bool, deviceType: String = "", deviceSubtype: String = "", featuresText: String = "") {
         self.name = name
         self.identifier = identifier
         self.video = video
         self.screen = screen
         self.selected = selected
         self.local = local
+        self.deviceType = deviceType
+        self.deviceSubtype = deviceSubtype
+        self.featuresText = featuresText
     }
 }
 
@@ -28,8 +34,9 @@ public struct RouteSnapshot: Sendable, Equatable, Codable {
     public var screenContext: Bool
     public var featuresKnown: Bool
     public var note: String
+    public var trace: [String]
 
-    public init(classes: [String: Bool], selectors: [String: Bool], devices: [RouteCandidate], screenContext: Bool, featuresKnown: Bool, note: String, encodings: [String: String] = [:], called: [String: Bool] = [:]) {
+    public init(classes: [String: Bool], selectors: [String: Bool], devices: [RouteCandidate], screenContext: Bool, featuresKnown: Bool, note: String, encodings: [String: String] = [:], called: [String: Bool] = [:], trace: [String] = []) {
         self.classes = classes
         self.selectors = selectors
         self.encodings = encodings
@@ -38,6 +45,7 @@ public struct RouteSnapshot: Sendable, Equatable, Codable {
         self.screenContext = screenContext
         self.featuresKnown = featuresKnown
         self.note = note
+        self.trace = trace
     }
 
     public var loaded: Bool {
@@ -118,6 +126,11 @@ public enum ObjCReturn {
         firstType(encoding) == "v"
     }
 
+    public static func primary(_ encoding: String) -> String {
+        guard let type = firstType(encoding) else { return "" }
+        return String(type)
+    }
+
     private static func firstType(_ encoding: String) -> Character? {
         let qualifiers: Set<Character> = ["r", "n", "N", "o", "O", "R", "V"]
         return encoding.first { !qualifiers.contains($0) }
@@ -167,7 +180,14 @@ public enum RouteSelection {
             lines.append("selector \(name)=\(snapshot.selectors[name] == true ? "yes" : "no") encoding=\(encoding) called=\(called)")
         }
         for device in snapshot.devices {
-            lines.append("device name=\(device.name) id=\(device.identifier) video=\(device.video) screen=\(device.screen) local=\(device.local) selected=\(device.selected)")
+            var line = "device name=\(device.name) id=\(device.identifier) video=\(device.video) screen=\(device.screen) local=\(device.local) selected=\(device.selected)"
+            if !device.deviceType.isEmpty { line += " type=\(device.deviceType)" }
+            if !device.deviceSubtype.isEmpty { line += " subtype=\(device.deviceSubtype)" }
+            if !device.featuresText.isEmpty { line += " features=\(device.featuresText)" }
+            lines.append(line)
+        }
+        for line in snapshot.trace {
+            lines.append(line)
         }
         lines.append("screenContext=\(snapshot.screenContext ? "yes" : "no")")
         lines.append("featuresKnown=\(snapshot.featuresKnown ? "yes" : "no")")

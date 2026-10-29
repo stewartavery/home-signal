@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The route probe records what each shared screen-context call returned, waits on a run loop for discovery sessions, and connects with `setOutputDevice:options:completionHandler:` when that context is non-nil. `--debug` includes the method lists of `AVOutputContext`, `AVOutputDeviceDiscoverySession`, and `MRAVRoutingDiscoverySession`.
 - Media-route probing runs in `home-signal-probe`. Class methods are called only when their type encoding returns an object, and the result is taken unretained. A probe crash is reported as an error and does not kill the agent. `--debug` includes each selector's type encoding.
 - `mirror --backend auto|routing|controlcenter` tries a runtime-loaded media route before Control Center. A locked screen returns `screen_locked` when the UI is required. If the media layer has no screen-mirroring context, connect reports `screen_mirror_unavailable` instead of routing playback audio as if it were the display. `--debug` lists the routing classes, selectors, and devices.
 - After the Control Center menu bar click, the agent waits up to 3 seconds for the window. If that click closed an already-open panel, it clicks again. Error -1719 (invalid index) is `not_ready`, not a permission failure. Permission remains -1743, -25211, -10006, and assistive-access or authorization denials. Control Center is closed at the end of every mirror command.

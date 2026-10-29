@@ -75,6 +75,17 @@ final class RouteSelectionTests: XCTestCase {
         let text = RouteSelection.debugText(decoded.snapshot)
         XCTAssertTrue(text.contains("encoding=@16@0:8"))
         XCTAssertTrue(text.contains("called=no"))
+        let traced = RouteSelection.debugText(RouteSnapshot(
+            classes: [:],
+            selectors: [:],
+            devices: [],
+            screenContext: false,
+            featuresKnown: false,
+            note: "",
+            trace: ["screenReturn AVOutputContext.sharedSystemScreenContext=nil", "method AVOutputContext +sharedSystemScreenContext encoding=@16@0:8"]
+        ))
+        XCTAssertTrue(traced.contains("screenReturn AVOutputContext.sharedSystemScreenContext=nil"))
+        XCTAssertTrue(traced.contains("method AVOutputContext +sharedSystemScreenContext encoding=@16@0:8"))
     }
 
     func testDebugTextListsClassesSelectorsAndDevices() {
