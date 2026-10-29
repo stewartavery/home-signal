@@ -178,7 +178,7 @@ public final class MacDisplayWindow: NSObject, WKNavigationDelegate {
         if let match = NSScreen.screens.first(where: { ScreenIdentity.matches($0, target: target) }) {
             return match
         }
-        let attached = NSScreen.screens.map(\.localizedName)
+        let attached = NSScreen.screens.map { $0.localizedName }
         let listed = attached.isEmpty ? "none" : attached.joined(separator: ", ")
         throw HomeSignalError.displayStep(
             "place",
