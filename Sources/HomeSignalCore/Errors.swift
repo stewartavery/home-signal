@@ -3,12 +3,14 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
     public var message: String
     public var hint: String?
     public var exitCode: Int32
+    public var step: String?
 
-    public init(code: String, message: String, hint: String? = nil, exitCode: Int32) {
+    public init(code: String, message: String, hint: String? = nil, exitCode: Int32, step: String? = nil) {
         self.code = code
         self.message = message
         self.hint = hint
         self.exitCode = exitCode
+        self.step = step
     }
 
     public var description: String {
@@ -21,9 +23,20 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
     public static func displayMismatch(expected: DisplayReadback, actual: DisplayReadback) -> HomeSignalError {
         HomeSignalError(
             code: "display_mismatch",
-            message: "Displayed content does not match the request. Requested hash \(expected.contentHash) title \(expected.title ?? ""); read back hash \(actual.contentHash) title \(actual.title ?? "").",
-            hint: "The command failed so this is not a successful update. Read `display status` before trying again.",
-            exitCode: 4
+            message: "Step verify failed: Displayed content does not match the request. Requested hash \(expected.contentHash) title \(expected.title ?? ""); read back hash \(actual.contentHash) title \(actual.title ?? "").",
+            hint: "The command failed so this is not a successful update. The window is not moved to another screen.",
+            exitCode: 4,
+            step: "verify"
+        )
+    }
+
+    public static func displayStep(_ step: String, _ message: String, exitCode: Int32 = 4) -> HomeSignalError {
+        HomeSignalError(
+            code: "display_step_failed",
+            message: "Step \(step) failed: \(message)",
+            hint: "The page was not confirmed on the target display. The command does not show it on another screen.",
+            exitCode: exitCode,
+            step: step
         )
     }
 
@@ -65,6 +78,15 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
 
     public static func unsupported(_ message: String, hint: String? = nil) -> HomeSignalError {
         HomeSignalError(code: "unsupported", message: message, hint: hint, exitCode: 6)
+    }
+
+    public static func notControllable(_ name: String) -> HomeSignalError {
+        HomeSignalError(
+            code: "not_controllable",
+            message: "Accessory \(name) is not a controllable light.",
+            hint: "home blink only changes accessories that report as lights. Run `home-signal device list` to see them.",
+            exitCode: 6
+        )
     }
 
     public static func timeout(_ message: String) -> HomeSignalError {

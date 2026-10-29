@@ -11,6 +11,11 @@ public actor AgentRuntime {
     private var displays: [DisplayBounds]
     private let blink: BlinkService
     private let stop: StopFlag
+    private let power: any DisplayPowerControlling
+    private let screens: any AttachedDisplayListing
+    private let placer: any DisplayPlacing
+    private let session: DisplaySession
+    private var holdingWake = false
     private let log = Log(category: "runtime")
 
     public init(
@@ -22,10 +27,14 @@ public actor AgentRuntime {
         input: any InputChannel,
         capture: any CaptureChannel,
         sleeper: any Sleeper = TaskSleeper(),
-        stop: StopFlag = StopFlag()
+        stop: StopFlag = StopFlag(),
+        power: (any DisplayPowerControlling)? = nil,
+        screens: (any AttachedDisplayListing)? = nil,
+        placer: (any DisplayPlacing)? = nil
     ) {
+        let resolvedDisplays = displays ?? config.displays
         self.config = config
-        self.displays = displays ?? config.displays
+        self.displays = resolvedDisplays
         self.lights = lights
         self.display = display
         self.mirror = mirror
@@ -33,6 +42,21 @@ public actor AgentRuntime {
         self.capture = capture
         self.blink = BlinkService(sleeper: sleeper)
         self.stop = stop
+        let resolvedPower = power ?? SimulatedDisplayPower()
+        let resolvedScreens = screens ?? StaticAttachedDisplays(AttachedDisplay.includingTarget(config, geometry: resolvedDisplays))
+        let resolvedPlacer = placer ?? (display as? any DisplayPlacing) ?? ChannelDisplayPlacer(display)
+        self.power = resolvedPower
+        self.screens = resolvedScreens
+        self.placer = resolvedPlacer
+        self.session = DisplaySession(
+            power: resolvedPower,
+            screens: resolvedScreens,
+            mirror: mirror,
+            placer: resolvedPlacer,
+            sleeper: sleeper,
+            reconnectSeconds: config.display.reconnectSeconds,
+            mirrorMode: config.mirror.mode
+        )
     }
 
     public func handleData(_ data: Data) async -> Data {
@@ -74,7 +98,7 @@ public actor AgentRuntime {
                 agentVersion: HomeSignalVersion.current,
                 backend: lights.backendID,
                 methods: IPCMethod.all,
-                channels: ["lights", "scenes", "display", "mirror", "input", "capture"]
+                channels: ["lights", "scenes", "display", "mirror", "input", "capture", "power"]
             ).jsonValue()
         case IPCMethod.lightsList:
             return try await lights.listDevices().jsonValue()
@@ -91,6 +115,16 @@ public actor AgentRuntime {
         case IPCMethod.lightsBlink:
             let params = try request.params.decode(BlinkParams.self)
             return try await blink.blink(lights, params: params, dryRun: request.dryRun).jsonValue()
+        case IPCMethod.homeBlink:
+            let params = try request.params.decode(HomeBlinkParams.self)
+            return try await blink.blinkAccessory(
+                lights,
+                accessory: params.accessory,
+                times: params.times,
+                intervalSeconds: params.intervalSeconds,
+                color: params.color,
+                dryRun: request.dryRun
+            ).jsonValue()
         case IPCMethod.scenesList:
             return try await lights.listScenes().jsonValue()
         case IPCMethod.scenesRun:
@@ -102,18 +136,29 @@ public actor AgentRuntime {
             return try SceneRunResult(name: params.name, ran: true).jsonValue()
         case IPCMethod.displayShow:
             let params = try request.params.decode(DisplayShowParams.self)
-            return try await showPrepared(params.document, present: params.present, dryRun: request.dryRun)
+            return try await showPrepared(
+                params.document,
+                present: params.present,
+                dryRun: request.dryRun,
+                targetName: params.targetName,
+                targetDeviceID: params.targetDeviceID
+            )
         case IPCMethod.displayStatus:
             return try await display.readback().jsonValue()
         case IPCMethod.displayClear:
-            let params = try request.params.decode(PresentParams.self)
-            return try await showPrepared(clearDocument(), present: params.present, dryRun: request.dryRun)
+            _ = try request.params.decode(PresentParams.self)
+            return try await stopDisplay(dryRun: request.dryRun)
         case IPCMethod.mirrorStatus:
             let params = try request.params.decode(MirrorTargetParams.self)
             return try await mirror.status(target: params.target).jsonValue()
         case IPCMethod.mirrorConnect:
             let params = try request.params.decode(MirrorConnectParams.self)
-            return try await mirror.connect(target: params.target, mode: params.mode, dryRun: request.dryRun).jsonValue()
+            return try await mirror.connect(
+                target: params.target,
+                mode: params.mode,
+                deviceID: params.deviceID,
+                dryRun: request.dryRun
+            ).jsonValue()
         case IPCMethod.mirrorDisconnect:
             let params = try request.params.decode(MirrorTargetParams.self)
             return try await mirror.disconnect(target: params.target, dryRun: request.dryRun).jsonValue()
@@ -154,6 +199,8 @@ public actor AgentRuntime {
         case IPCMethod.systemPing:
             return try PingResult(running: true).jsonValue()
         case IPCMethod.systemShutdown:
+            await session.stop()
+            holdingWake = false
             stop.stop()
             return try PingResult(running: false).jsonValue()
         default:
@@ -161,52 +208,93 @@ public actor AgentRuntime {
         }
     }
 
-    private func showPrepared(_ document: DisplayDocument, present: Bool, dryRun: Bool) async throws -> JSONValue {
+    private func showPrepared(_ document: DisplayDocument, present: Bool, dryRun: Bool, targetName: String? = nil, targetDeviceID: String? = nil) async throws -> JSONValue {
         let prepared = try DisplayRendering.prepare(document)
+        let target = try DisplayTarget.resolve(overrideName: targetName, overrideID: targetDeviceID, config: config)
+        let attached = await screens.attachedDisplays()
         if dryRun {
+            let match = DisplayMatch.find(target, in: attached)
             return try DisplayShowResult(
                 contentHash: prepared.readback.contentHash,
                 title: prepared.readback.title,
                 kind: document.kind,
-                verified: false
+                verified: false,
+                target: target.name,
+                deviceID: target.deviceID,
+                screen: match?.name ?? "",
+                fullScreen: false,
+                onTarget: match != nil,
+                holdingWake: holdingWake,
+                dryRun: true,
+                attached: attached.map(\.name)
             ).jsonValue()
         }
-        let actual = try await display.show(html: prepared.html, kind: document.kind, present: present)
-        guard actual == prepared.readback else {
-            throw HomeSignalError.displayMismatch(expected: prepared.readback, actual: actual)
-        }
-        if present && config.display.parkMouse {
-            do {
-                _ = try await input.park(
-                    displays: displays,
-                    display: config.input.parkDisplay,
-                    corner: config.input.parkCorner,
-                    inset: config.input.parkInset,
-                    dryRun: false
-                )
-            } catch {
-                log.error("Could not park the pointer: \(error)")
+        do {
+            let result = try await session.show(
+                html: prepared.html,
+                readback: prepared.readback,
+                present: present,
+                target: target,
+                alreadyHolding: holdingWake
+            )
+            holdingWake = result.holdingWake
+            if present && config.display.parkMouse {
+                do {
+                    _ = try await input.park(
+                        displays: displays,
+                        display: config.input.parkDisplay,
+                        corner: config.input.parkCorner,
+                        inset: config.input.parkInset,
+                        dryRun: false
+                    )
+                } catch {
+                    log.error("Could not park the pointer: \(error)")
+                }
             }
+            return try result.jsonValue()
+        } catch {
+            holdingWake = await power.isHolding()
+            throw error
         }
+    }
+
+    private func stopDisplay(dryRun: Bool) async throws -> JSONValue {
+        let target = try DisplayTarget.resolve(overrideName: nil, overrideID: nil, config: config)
+        let attached = await screens.attachedDisplays()
+        if dryRun {
+            return try DisplayShowResult(
+                contentHash: "",
+                title: nil,
+                kind: DisplayKind.clear,
+                verified: false,
+                target: target.name,
+                deviceID: target.deviceID,
+                screen: "",
+                fullScreen: false,
+                onTarget: false,
+                holdingWake: holdingWake,
+                dryRun: true,
+                attached: attached.map(\.name)
+            ).jsonValue()
+        }
+        await session.stop()
+        holdingWake = false
         return try DisplayShowResult(
-            contentHash: actual.contentHash,
-            title: actual.title,
-            kind: actual.kind,
-            verified: true
+            contentHash: "",
+            title: nil,
+            kind: DisplayKind.clear,
+            verified: false,
+            target: target.name,
+            deviceID: target.deviceID,
+            screen: "",
+            fullScreen: false,
+            onTarget: false,
+            holdingWake: false,
+            dryRun: false,
+            attached: attached.map(\.name)
         ).jsonValue()
     }
 
-    private func clearDocument() -> DisplayDocument {
-        DisplayDocument(
-            kind: DisplayKind.clear,
-            background: config.display.background,
-            foreground: config.display.foreground,
-            accent: config.display.accent,
-            messageSize: config.display.messageSize,
-            titleSize: config.display.titleSize,
-            rowSize: config.display.rowSize
-        )
-    }
 }
 
 public enum AgentServer {

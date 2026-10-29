@@ -61,4 +61,36 @@ public struct BlinkService: Sendable {
         }
         return BlinkResult(name: params.name, times: params.times, color: params.color, prior: prior, restored: restored, dryRun: false)
     }
+
+    public func blinkAccessory(
+        _ backend: any LightBackend,
+        accessory: String,
+        times: Int,
+        intervalSeconds: Double,
+        color: String,
+        dryRun: Bool
+    ) async throws -> BlinkResult {
+        guard intervalSeconds.isFinite, intervalSeconds > 0 else {
+            throw HomeSignalError.usage("Interval must be greater than 0 seconds.")
+        }
+        let milliseconds = Int((intervalSeconds * 1000).rounded())
+        guard (50...10_000).contains(milliseconds) else {
+            throw HomeSignalError.usage("Interval must be from 0.05 to 10 seconds.")
+        }
+        let devices = try await backend.listDevices()
+        guard let device = devices.first(where: { $0.name == accessory }) else {
+            throw HomeSignalError.notFound("accessory", name: accessory)
+        }
+        guard device.type == "light" else {
+            throw HomeSignalError.notControllable(accessory)
+        }
+        let params = BlinkParams(
+            name: accessory,
+            times: times,
+            color: color,
+            onMilliseconds: milliseconds,
+            offMilliseconds: milliseconds
+        )
+        return try await blink(backend, params: params, dryRun: dryRun)
+    }
 }

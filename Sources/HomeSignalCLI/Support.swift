@@ -6,7 +6,7 @@ struct GlobalOptions: ParsableArguments {
     @Flag(name: .long, help: "Print a JSON envelope on stdout. Errors use the same envelope and a non-zero exit code.")
     var json = false
 
-    @Flag(name: .long, help: "Do not change lights, scenes, the display, mirroring, or the pointer. Reads still run.")
+    @Flag(name: .long, help: "Do not change lights, scenes, the display, mirroring, or the pointer. Display dry-run does not wake the display, reconnect, or show a page. Reads still run.")
     var dryRun = false
 
     @Option(name: .long, help: "Config file. Defaults to ~/.config/home-signal/config.toml.")
@@ -137,6 +137,9 @@ enum CLIRuntime {
         ]
         if let hint = error.hint {
             fields["hint"] = .string(hint)
+        }
+        if let step = error.step {
+            fields["step"] = .string(step)
         }
         return .object(fields)
     }

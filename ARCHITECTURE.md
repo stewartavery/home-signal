@@ -60,7 +60,9 @@ HomeKit writes numeric characteristics and converts color temperature between Ke
 4. Add a CLI subcommand whose `--help` text states whether it is idempotent, and add a row to `CommandCatalog`.
 5. Provide a simulated implementation and a test that runs CLI → socket → runtime without macOS.
 
-`display html` passes caller markup through unchanged. `display layout` renders a JSON module spec to HTML in `DisplayLayout`, then shows those bytes with kind `layout`. `DisplayRendering` rejects an empty message, schedule, layout, or HTML document before anything is shown. The channel returns the hash and title of the page it actually loaded, and the runtime fails the request when those differ from the request.
+`display html` passes caller markup through unchanged. `display layout` renders a JSON module spec to HTML in `DisplayLayout`, then shows those bytes with kind `layout`. `DisplayRendering` rejects an empty message, schedule, layout, or HTML document before anything is shown.
+
+`DisplaySession` runs a show: wake and hold (`DisplayPowerControlling`), require the configured receiver in `AttachedDisplayListing` or reconnect through `MirrorChannel` until `display.reconnect_seconds`, then `DisplayPlacing` puts the agent's window full screen on that screen. `verified` is true only when the hash and title match, the reported screen is the matched screen, and the window is full screen. A failure names the step and does not place the window on a different screen. `--dry-run` only reads the attached list. `display clear` and agent shutdown dismiss the window and release the assertion. `HomeSignalAgent --simulate` treats the configured target as attached and uses in-memory fakes, so it does not wake hardware or open a window.
 
 ## Display layout
 

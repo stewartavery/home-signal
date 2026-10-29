@@ -313,12 +313,41 @@ public struct DisplayShowResult: Sendable, Equatable, Codable {
     public var title: String?
     public var kind: String
     public var verified: Bool
+    public var target: String
+    public var deviceID: String
+    public var screen: String
+    public var fullScreen: Bool
+    public var onTarget: Bool
+    public var holdingWake: Bool
+    public var dryRun: Bool
+    public var attached: [String]
 
-    public init(contentHash: String, title: String?, kind: String, verified: Bool) {
+    public init(
+        contentHash: String,
+        title: String?,
+        kind: String,
+        verified: Bool,
+        target: String,
+        deviceID: String,
+        screen: String,
+        fullScreen: Bool,
+        onTarget: Bool,
+        holdingWake: Bool,
+        dryRun: Bool,
+        attached: [String]
+    ) {
         self.contentHash = contentHash
         self.title = title
         self.kind = kind
         self.verified = verified
+        self.target = target
+        self.deviceID = deviceID
+        self.screen = screen
+        self.fullScreen = fullScreen
+        self.onTarget = onTarget
+        self.holdingWake = holdingWake
+        self.dryRun = dryRun
+        self.attached = attached
     }
 }
 
@@ -339,14 +368,16 @@ public struct DisplayBounds: Sendable, Equatable, Codable {
     public var originX: Int
     public var originY: Int
     public var primary: Bool
+    public var deviceID: String
 
-    public init(name: String, width: Int, height: Int, originX: Int, originY: Int, primary: Bool) {
+    public init(name: String, width: Int, height: Int, originX: Int, originY: Int, primary: Bool, deviceID: String = "") {
         self.name = name
         self.width = width
         self.height = height
         self.originX = originX
         self.originY = originY
         self.primary = primary
+        self.deviceID = deviceID
     }
 }
 

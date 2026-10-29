@@ -18,9 +18,24 @@ public protocol DisplayChannel: Sendable {
     func clear(present: Bool) async throws
 }
 
+public protocol DisplayPowerControlling: Sendable {
+    func wakeAndHold(reason: String) async throws
+    func release() async
+    func isHolding() async -> Bool
+}
+
+public protocol AttachedDisplayListing: Sendable {
+    func attachedDisplays() async -> [AttachedDisplay]
+}
+
+public protocol DisplayPlacing: Sendable {
+    func place(html: String, kind: String, present: Bool, target: DisplayTarget) async throws -> PlacementReport
+    func dismiss() async
+}
+
 public protocol MirrorChannel: Sendable {
     func status(target: String) async throws -> MirrorStatus
-    func connect(target: String, mode: String, dryRun: Bool) async throws -> MirrorStatus
+    func connect(target: String, mode: String, deviceID: String, dryRun: Bool) async throws -> MirrorStatus
     func disconnect(target: String, dryRun: Bool) async throws -> MirrorStatus
 }
 
