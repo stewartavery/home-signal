@@ -9,12 +9,13 @@ public struct RuntimeMediaRoutes: MediaRouteProbing {
     public init() {}
 
     public func snapshot() async -> RouteSnapshot {
-        await MainActor.run { Collector.collect(apply: nil) }
+        let outcome: CollectResult = await MainActor.run { Collector.collect(apply: nil) }
+        return outcome.snapshot
     }
 
     public func setScreenRoute(identifier: String, enabled: Bool, dryRun: Bool) async throws -> RouteSnapshot {
         if dryRun { return await snapshot() }
-        let outcome = await MainActor.run { Collector.collect(apply: Apply(identifier: identifier, enabled: enabled)) }
+        let outcome: CollectResult = await MainActor.run { Collector.collect(apply: Apply(identifier: identifier, enabled: enabled)) }
         if let error = outcome.error {
             throw HomeSignalError.backend(error, hint: RouteSelection.debugText(outcome.snapshot))
         }
