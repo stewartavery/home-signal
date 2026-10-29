@@ -1,0 +1,54 @@
+{
+  "title": "Four modules",
+  "theme": "default",
+  "modules": [
+    {
+      "type": "header",
+      "title": "Example day",
+      "subtitle": "Placeholder"
+    },
+    {
+      "type": "list",
+      "title": "Later",
+      "items": [
+        {
+          "leading": "18:00",
+          "text": "Example item"
+        },
+        {
+          "leading": "19:30",
+          "text": "Example item"
+        }
+      ]
+    },
+    {
+      "type": "columns",
+      "columns": [
+        {
+          "title": "Morning",
+          "items": [
+            {
+              "leading": "09:00",
+              "text": "Example item"
+            }
+          ]
+        },
+        {
+          "title": "Afternoon",
+          "items": [
+            {
+              "leading": "13:00",
+              "text": "Example meeting"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "alert",
+      "level": "warning",
+      "title": "Notice",
+      "text": "Example notice"
+    }
+  ]
+}

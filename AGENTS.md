@@ -95,6 +95,21 @@ Multi-section schedule:
 
 Themes are color and font only (`DisplayThemes.all`). Add a module in `DisplayModuleKind`, the spec parser, and `DisplayModuleHTML`. Do not put colors in the layout CSS.
 
+### Display proof
+
+Check layout changes without a display. `swift test` includes the fixture contract. The browser suite is separate:
+
+```bash
+scripts/display-proof.sh verify
+scripts/display-proof.sh record
+```
+
+`verify` runs `swift test`, then Playwright in the image from `VisualProof/playwright-image.txt`. `record` rewrites fixture HTML with `display proof export` and runs container-only `--update-snapshots=changed`. Regen Linux goldens only in that container. Never record against a host browser or a real display. `display proof export` does not show a page and does not invent content when a spec is empty.
+
+On a Mac, use the same scripts for Linux goldens (Docker runs the pinned linux/amd64 image). Optional WKWebView baselines are not part of CI. `HS_MAC_PROOF=record` writes them and `HS_MAC_PROOF=1` compares them. They live in `Fixtures/DisplayProof/screenshots/darwin` and must not be compared to `screenshots/linux`. Linux skips that smoke.
+
+Add a fixture by putting a JSON spec in `Fixtures/DisplayProof/specs` and a row in `catalog.json`, then `scripts/display-proof.sh record`. Keep the catalog between 8 and 12 pages unless you are extending coverage on purpose. Placeholder copy only.
+
 Exit codes: `0` ok, `1` usage, `2` config, `3` not found, `4` backend, `5` agent down, `6` unsupported or permission, `7` timeout, `8` restore failed, `64` bad command line.
 
 Config: `~/.config/home-signal/config.toml`. Socket: `~/.local/share/home-signal/agent.sock`, or `--socket`.

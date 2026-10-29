@@ -1,0 +1,61 @@
+{
+  "fixtures": [
+    {
+      "name": "message-default",
+      "spec": "specs/message.json",
+      "theme": "default"
+    },
+    {
+      "name": "message-moonlit",
+      "spec": "specs/message.json",
+      "theme": "moonlit-autumn"
+    },
+    {
+      "name": "schedule-default",
+      "spec": "specs/schedule.json",
+      "theme": "default"
+    },
+    {
+      "name": "schedule-moonlit",
+      "spec": "specs/schedule.json"
+    },
+    {
+      "name": "pair-default",
+      "spec": "specs/pair.json"
+    },
+    {
+      "name": "quad-default",
+      "spec": "specs/quad.json",
+      "theme": "default"
+    },
+    {
+      "name": "quad-moonlit",
+      "spec": "specs/quad.json",
+      "theme": "moonlit-autumn"
+    },
+    {
+      "name": "overflow-message",
+      "spec": "specs/overflow-message.json",
+      "overflow": true
+    },
+    {
+      "name": "overflow-list",
+      "spec": "specs/overflow-list.json",
+      "overflow": true
+    },
+    {
+      "name": "alerts-default",
+      "spec": "specs/alerts.json"
+    },
+    {
+      "name": "columns-moonlit",
+      "spec": "specs/columns.json"
+    },
+    {
+      "name": "grid-outline",
+      "spec": "specs/quad.json",
+      "theme": "moonlit-autumn",
+      "outline": true
+    }
+  ]
+}

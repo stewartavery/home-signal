@@ -4,5 +4,9 @@
 .DS_Store
 /tmp/
 *.sock
+node_modules/
+VisualProof/test-results/
+VisualProof/playwright-report/
+VisualProof/blob-report/
 
 .privacy-denylist

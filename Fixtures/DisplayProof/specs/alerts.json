@@ -1,0 +1,24 @@
+{
+  "title": "Notices",
+  "theme": "default",
+  "modules": [
+    {
+      "type": "alert",
+      "level": "info",
+      "title": "Info",
+      "text": "Example notice"
+    },
+    {
+      "type": "alert",
+      "level": "warning",
+      "title": "Warning",
+      "text": "Example notice"
+    },
+    {
+      "type": "alert",
+      "level": "critical",
+      "title": "Critical",
+      "text": "Example notice"
+    }
+  ]
+}

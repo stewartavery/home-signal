@@ -68,4 +68,6 @@ HomeKit writes numeric characteristics and converts color temperature between Ke
 
 Add a theme by appending a `DisplayTheme` to `DisplayThemes.all`. Add a module by extending `DisplayModuleKind`, validation in the spec parser, and `DisplayModuleHTML`. Layout CSS reads tokens and theme variables. It does not name a theme.
 
+`DisplayProof` turns a layout spec into self-contained HTML for visual checks: bundled WOFF2 faces, a fixed 1920×1080 stage, and a `data-hs-ready` marker after text fit. `Fixtures/DisplayProof/catalog.json` lists the specs. `display proof export` writes the HTML and `manifest.json`. It does not show a page. Browser checks and Linux screenshots live in `VisualProof/` and run in the image named by `VisualProof/playwright-image.txt`. Darwin WKWebView baselines, when recorded, stay under `screenshots/darwin` and are not compared with the Linux goldens.
+
 Channels that exist today: lights, scenes, display, mirror, input, capture.

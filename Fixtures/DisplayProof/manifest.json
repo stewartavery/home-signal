@@ -1,0 +1,129 @@
+{
+  "algorithm" : "sha256",
+  "fixtures" : [
+    {
+      "contentHash" : "7d70016b55a823d7ebf7ccff7221c9dc309f86571d57553e7f5cd9addb27af0f",
+      "file" : "message-default.html",
+      "modules" : 1,
+      "name" : "message-default",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "default",
+      "title" : "Reminder"
+    },
+    {
+      "contentHash" : "367d1e300eee5771e6387fe8c19eaffa2e343d47e9c542a2c500e4909cd2230d",
+      "file" : "message-moonlit.html",
+      "modules" : 1,
+      "name" : "message-moonlit",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "moonlit-autumn",
+      "title" : "Reminder"
+    },
+    {
+      "contentHash" : "c1a4755b03aff85435ed0b510864e2f7ec0246ffe38e42052e8b051626a79abb",
+      "file" : "schedule-default.html",
+      "modules" : 3,
+      "name" : "schedule-default",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "default",
+      "title" : "Example day"
+    },
+    {
+      "contentHash" : "fecd30c54d11682d584df79b12aecaf81e8d2309ecf6d2fa48b9c943d2344812",
+      "file" : "schedule-moonlit.html",
+      "modules" : 3,
+      "name" : "schedule-moonlit",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "moonlit-autumn",
+      "title" : "Example day"
+    },
+    {
+      "contentHash" : "fb9fc61cc0c2e3db89163cdc08f8c1a07ae04efb9d909a2e0d7c7f97ece229de",
+      "file" : "pair-default.html",
+      "modules" : 2,
+      "name" : "pair-default",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "default",
+      "title" : "Pair"
+    },
+    {
+      "contentHash" : "f82dd70cc08736aa9143e39c758105999f03f822f7fd1e70114b50879ce5121d",
+      "file" : "quad-default.html",
+      "modules" : 4,
+      "name" : "quad-default",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "default",
+      "title" : "Four modules"
+    },
+    {
+      "contentHash" : "f3d77497811ee6d84667869bc33dd2fa2fbdc93c3425bcb69b04f71a016be930",
+      "file" : "quad-moonlit.html",
+      "modules" : 4,
+      "name" : "quad-moonlit",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "moonlit-autumn",
+      "title" : "Four modules"
+    },
+    {
+      "contentHash" : "7f36848aff62b3cfb4c581d7e73e8e46ded71cebbd0d32fc5269f8604b155827",
+      "file" : "overflow-message.html",
+      "modules" : 1,
+      "name" : "overflow-message",
+      "outline" : false,
+      "overflow" : true,
+      "theme" : "default",
+      "title" : "Overflow"
+    },
+    {
+      "contentHash" : "9a684bae4e403da9bfcb3511c50572e93507fd33151422397844b152d7d4dd88",
+      "file" : "overflow-list.html",
+      "modules" : 1,
+      "name" : "overflow-list",
+      "outline" : false,
+      "overflow" : true,
+      "theme" : "moonlit-autumn",
+      "title" : "Overflow list"
+    },
+    {
+      "contentHash" : "62a8e5870086a213a170811692eece1e6da193a582a3d918461b77bd533f891c",
+      "file" : "alerts-default.html",
+      "modules" : 3,
+      "name" : "alerts-default",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "default",
+      "title" : "Notices"
+    },
+    {
+      "contentHash" : "8b3fe243060d9ac2bceb96f0b05163422245f35e5909e8e4c045edc5d36b2751",
+      "file" : "columns-moonlit.html",
+      "modules" : 1,
+      "name" : "columns-moonlit",
+      "outline" : false,
+      "overflow" : false,
+      "theme" : "moonlit-autumn",
+      "title" : "Columns"
+    },
+    {
+      "contentHash" : "fc025ae0efe1b09c0cd02863e0a01f5f57cc70849e6e674b8c09b7ee58f9e7ae",
+      "file" : "grid-outline.html",
+      "modules" : 4,
+      "name" : "grid-outline",
+      "outline" : true,
+      "overflow" : false,
+      "theme" : "moonlit-autumn",
+      "title" : "Four modules"
+    }
+  ],
+  "stage" : {
+    "height" : 1080,
+    "width" : 1920
+  }
+}
