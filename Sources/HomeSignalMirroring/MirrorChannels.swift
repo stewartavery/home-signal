@@ -52,19 +52,26 @@ public struct SystemEventsMirror: MirrorChannel {
     private let runner: any CommandRunning
     private let clicker: Clicker
     private let sleeper: any Sleeper
+    private let ax: any ScreenMirroringReading
 
     public init(
         config: MirrorConfig,
         displays: @escaping @Sendable () -> [DisplayBounds],
         runner: any CommandRunning = ProcessCommandRunner(),
         clicker: @escaping Clicker,
-        sleeper: any Sleeper = TaskSleeper()
+        sleeper: any Sleeper = TaskSleeper(),
+        ax: (any ScreenMirroringReading)? = nil
     ) {
         self.config = config
         self.displays = displays
         self.runner = runner
         self.clicker = clicker
         self.sleeper = sleeper
+        #if os(macOS)
+        self.ax = ax ?? MacScreenMirroringReader()
+        #else
+        self.ax = ax ?? EmptyScreenMirroringReader()
+        #endif
     }
 
     public func status(target: String, debugAX: Bool, debugFile: String?) async throws -> MirrorStatus {
@@ -240,12 +247,34 @@ public struct SystemEventsMirror: MirrorChannel {
         let timeoutMs = 8000
         let poll = 400
         var waited = 0
-        var last: [MirrorRoute] = []
+        var lastTree = AXElement(role: "AXWindow", attributes: [:], children: [])
+        var last = DeviceListRead(routes: [], checkboxCount: 0, unnamed: [])
         while true {
-            let text = try await run(MirrorScript.dumpRoutes(), steps: &steps, step: "routes", debugAX: debugAX, debugFile: debugFile)
-            last = MirrorAX.routes(MirrorAX.parse(text))
-            if !last.isEmpty || waited >= timeoutMs {
-                return last
+            lastTree = try await ax.snapshot()
+            last = MirrorAX.deviceRoutes(in: lastTree)
+            let entry = MirrorAXStep(step: "routes", tree: MirrorAX.formatAttributes(lastTree))
+            if steps.last?.step != "routes" || steps.last?.tree != entry.tree {
+                steps.append(entry)
+                if debugAX { MirrorAXDebug.append(entry, to: debugFile) }
+            }
+            if last.checkboxCount >= 1 && last.unnamed.isEmpty {
+                return last.routes
+            }
+            if waited >= timeoutMs {
+                if last.checkboxCount == 0 {
+                    throw annotate(
+                        HomeSignalError.deviceListTimeout(saw: MirrorAX.screenMirroringIdentifiers(in: lastTree)),
+                        steps: steps,
+                        debugAX: debugAX,
+                        debugFile: debugFile
+                    )
+                }
+                throw annotate(
+                    HomeSignalError.screenMirroringNamesUnreadable(rows: last.unnamed),
+                    steps: steps,
+                    debugAX: debugAX,
+                    debugFile: debugFile
+                )
             }
             let pause = min(poll, timeoutMs - waited)
             try await sleeper.sleep(milliseconds: pause)

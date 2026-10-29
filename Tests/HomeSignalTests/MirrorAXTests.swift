@@ -89,6 +89,64 @@ final class MirrorAXTests: XCTestCase {
         )
         XCTAssertNil(MirrorAX.nameFromIdentifier("screen-mirroring-header"))
         XCTAssertNil(MirrorAX.nameFromIdentifier("wifi-network-ExampleNet"))
+        XCTAssertNil(MirrorAX.nameFromIdentifier("screen-mirroring-preferences"))
+        XCTAssertNil(MirrorAX.nameFromIdentifier(exampleTVRow))
+        XCTAssertNil(MirrorAX.meaningful("missing value"))
+        XCTAssertNil(MirrorAX.routeName("missing value"))
+    }
+
+    func testDeviceListNamesComeFromAttributesNotTheIdentifier() {
+        let early = MirrorAX.deviceRoutes(in: preferencesOnlyTree())
+        XCTAssertEqual(early.checkboxCount, 0)
+        XCTAssertTrue(early.routes.isEmpty)
+
+        let read = MirrorAX.deviceRoutes(in: deviceListTree())
+        XCTAssertEqual(read.checkboxCount, 2)
+        XCTAssertEqual(read.unnamed, [])
+        XCTAssertEqual(read.routes.map(\.name), ["Example TV", "Example Speaker"])
+        XCTAssertEqual(read.routes.map(\.identifier), [exampleTVRow, exampleSpeakerRow])
+        XCTAssertEqual(read.routes.map(\.selected), [false, true])
+        XCTAssertFalse(read.routes.contains { $0.name == "missing value" || $0.name.contains("00000000") })
+
+        let help = MirrorAX.deviceRoutes(in: axEl("AXGroup", ["AXIdentifier": "screen-mirroring-device-list"], [
+            axEl("AXCheckBox", [
+                "AXIdentifier": exampleTVRow,
+                "AXDescription": "toggle button",
+                "AXTitle": "missing value",
+                "AXHelp": "Example TV",
+                "AXValue": "0",
+            ]),
+        ]))
+        XCTAssertEqual(help.routes.map(\.name), ["Example TV"])
+
+        let custom = MirrorAX.deviceRoutes(in: axEl("AXGroup", ["AXIdentifier": "screen-mirroring-device-list"], [
+            axEl("AXCheckBox", [
+                "AXIdentifier": exampleTVRow,
+                "AXDescription": "toggle button",
+                "AXTitle": "missing value",
+                "AXCustomContent": "label=ignored; value=Example TV",
+                "AXValue": "0",
+            ]),
+        ]))
+        XCTAssertEqual(custom.routes.map(\.name), ["Example TV"])
+
+        let ordered = MirrorAX.deviceRoutes(in: rowOrderTree())
+        XCTAssertEqual(ordered.routes.map(\.name), ["Example TV", "Example Speaker"])
+
+        let unnamed = MirrorAX.deviceRoutes(in: unnamedTree())
+        XCTAssertEqual(unnamed.checkboxCount, 1)
+        XCTAssertTrue(unnamed.routes.isEmpty)
+        XCTAssertEqual(unnamed.unnamed, ["row 1 id=\(exampleTVRow)"])
+
+        let dump = MirrorAX.formatAttributes(deviceListTree())
+        XCTAssertTrue(dump.contains("AXTitle=missing value"))
+        XCTAssertTrue(dump.contains("AXLabel=Example Speaker"))
+        XCTAssertTrue(dump.contains("AXHelp="))
+        XCTAssertTrue(dump.contains("AXAttributedDescription="))
+        XCTAssertTrue(dump.contains("AXCustomContent="))
+        XCTAssertTrue(dump.contains("AXValue=Example TV"))
+        XCTAssertTrue(dump.contains("AXIdentifier=\(exampleTVRow)"))
+        XCTAssertTrue(dump.contains("screen-mirroring-device-list"))
     }
 
     func testPermissionErrorDetectsTheControlCenterWindowFailure() {
@@ -126,13 +184,12 @@ final class MirrorAXTests: XCTestCase {
     func testControlCenterPathReadsRoutesAndClicksTheMatchedRow() async throws {
         let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("hs-ax-\(UUID().uuidString).txt").path
         defer { try? FileManager.default.removeItem(atPath: debugFile) }
+        let ax = QueueAX([preferencesOnlyTree(), deviceListTree()])
         let runner = QueueRunner(outputs: [
             ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
             ok("clicked"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
-            ok(""),
-            ok(lines(screenMirroringRoutes())),
             ok("clicked"),
         ])
         let mirror = SystemEventsMirror(
@@ -140,24 +197,29 @@ final class MirrorAXTests: XCTestCase {
             displays: { [] },
             runner: runner,
             clicker: { _ in },
-            sleeper: ImmediateSleeper()
+            sleeper: ImmediateSleeper(),
+            ax: ax
         )
         let status = try await mirror.connect(target: "Example TV", mode: "display", deviceID: "", dryRun: false, debugAX: true, debugFile: debugFile)
         XCTAssertTrue(status.connected)
         XCTAssertTrue(status.changed)
+        XCTAssertGreaterThan(ax.calls, 1)
         let moduleClick = runner.scripts.first { $0.contains("click-module") }
         XCTAssertTrue(moduleClick?.contains("set wantedID to \"controlcenter-screen-mirroring\"") == true)
         XCTAssertTrue(moduleClick?.contains("set wantedDesc to \"\"") == true)
         XCTAssertFalse(moduleClick?.contains("controlcenter-wifi") == true)
         let routeClick = runner.scripts.first { $0.contains("click-route") }
-        XCTAssertTrue(routeClick?.contains("set wantedID to \"screen-mirroring-device-Example TV\"") == true)
+        XCTAssertTrue(routeClick?.contains("set wantedID to \"\(exampleTVRow)\"") == true)
         XCTAssertTrue(routeClick?.contains("set wantedName to \"Example TV\"") == true)
-        XCTAssertFalse(routeClick?.contains("set wantedName to \"toggle button\"") == true)
-        XCTAssertFalse(routeClick?.contains("set wantedID to \"wifi-network-ExampleNet\"") == true)
+        XCTAssertFalse(routeClick?.contains("set wantedName to \"missing value\"") == true)
+        XCTAssertFalse(routeClick?.contains("set wantedID to \"screen-mirroring-preferences\"") == true)
         let saved = try String(contentsOfFile: debugFile, encoding: .utf8)
         XCTAssertTrue(saved.contains("id=controlcenter-screen-mirroring"))
-        XCTAssertTrue(saved.contains("id=screen-mirroring-device-Example TV"))
         XCTAssertTrue(saved.contains("[routes]"))
+        XCTAssertTrue(saved.contains("AXIdentifier=\(exampleTVRow)"))
+        XCTAssertTrue(saved.contains("AXTitle=missing value"))
+        XCTAssertTrue(saved.contains("AXValue=Example TV"))
+        XCTAssertTrue(saved.contains("screen-mirroring-preferences"))
     }
 
     func testMirrorListOmitsGenericControlLabels() async throws {
@@ -166,19 +228,85 @@ final class MirrorAXTests: XCTestCase {
             ok("clicked"),
             ok(lines(controlCenterModules())),
             ok("clicked"),
-            ok(lines(screenMirroringRoutes())),
         ])
         let mirror = SystemEventsMirror(
             config: HomeSignalConfig.standard.mirror,
             displays: { [] },
             runner: runner,
             clicker: { _ in },
-            sleeper: ImmediateSleeper()
+            sleeper: ImmediateSleeper(),
+            ax: QueueAX([preferencesOnlyTree(), deviceListTree()])
         )
-        let listed = try await mirror.list(discover: false, debugAX: false, debugFile: nil)
+        let listed = try await mirror.list(discover: false, debugAX: true, debugFile: nil)
         XCTAssertEqual(listed.controlCenter, ["Example TV", "Example Speaker"])
+        XCTAssertFalse(listed.controlCenter.contains("missing value"))
         XCTAssertFalse(listed.controlCenter.contains("toggle button"))
         XCTAssertFalse(listed.controlCenter.contains("button"))
+        XCTAssertFalse(listed.controlCenter.contains("preferences"))
+        let routes = listed.accessibility.filter { $0.step == "routes" }.map(\.tree).joined(separator: "\n")
+        XCTAssertTrue(routes.contains("AXLabel="))
+        XCTAssertTrue(routes.contains("AXHelp="))
+        XCTAssertTrue(routes.contains("AXCustomContent="))
+        XCTAssertTrue(routes.contains("AXAttributedDescription="))
+    }
+
+    func testMirrorListWaitsForDeviceRowsAndRefusesMissingValue() async throws {
+        let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("hs-ax-\(UUID().uuidString).txt").path
+        defer { try? FileManager.default.removeItem(atPath: debugFile) }
+        let runner = QueueRunner(outputs: [
+            ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
+            ok("clicked"),
+            ok(lines(controlCenterModules())),
+            ok("clicked"),
+        ])
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper(),
+            ax: QueueAX([unnamedTree()])
+        )
+        do {
+            _ = try await mirror.list(discover: false, debugAX: true, debugFile: debugFile)
+            XCTFail("expected an unreadable name")
+        } catch let error as HomeSignalError {
+            XCTAssertEqual(error.code, "backend")
+            XCTAssertEqual(error.exitCode, 4)
+            XCTAssertTrue(error.message.contains("no name"))
+            XCTAssertTrue(error.message.contains("row 1"))
+            XCTAssertFalse(error.message.contains("missing value"))
+        }
+        let saved = try String(contentsOfFile: debugFile, encoding: .utf8)
+        XCTAssertTrue(saved.contains("AXTitle=missing value"))
+        XCTAssertTrue(saved.contains("AXLabel="))
+        XCTAssertTrue(saved.contains("AXHelp="))
+    }
+
+    func testPreferencesButtonIsNotAReceiverRow() async throws {
+        let runner = QueueRunner(outputs: [
+            ok(axLine(role: "menu bar item", title: "Control Center", description: "Control Center")),
+            ok("clicked"),
+            ok(lines(controlCenterModules())),
+            ok("clicked"),
+        ])
+        let mirror = SystemEventsMirror(
+            config: HomeSignalConfig.standard.mirror,
+            displays: { [] },
+            runner: runner,
+            clicker: { _ in },
+            sleeper: ImmediateSleeper(),
+            ax: QueueAX([preferencesOnlyTree()])
+        )
+        do {
+            _ = try await mirror.list(discover: false, debugAX: false, debugFile: nil)
+            XCTFail("expected a timeout")
+        } catch let error as HomeSignalError {
+            XCTAssertEqual(error.code, "timeout")
+            XCTAssertEqual(error.exitCode, 7)
+            XCTAssertTrue(error.message.contains("screen-mirroring-preferences"))
+            XCTAssertFalse(error.message.contains("missing value"))
+        }
     }
 
     func testMissingAutomationIsAPermissionError() async throws {
@@ -271,6 +399,131 @@ final class MirrorAXTests: XCTestCase {
         XCTAssertTrue(script.contains("PATH"))
         XCTAssertFalse(script.contains("sudo"))
         XCTAssertFalse(script.contains("/usr/local/bin"))
+    }
+}
+
+private let exampleTVRow = "screen-mirroring-device-AirPlay:00000000-0000-4000-8000-000000000001"
+private let exampleSpeakerRow = "screen-mirroring-device-AirPlay:00000000-0000-4000-8000-000000000002"
+
+private func preferencesOnlyTree() -> AXElement {
+    axEl("AXWindow", ["AXTitle": "Control Center", "AXSubrole": "AXSystemDialog"], [
+        axEl("AXGroup", [:], [
+            axEl("AXButton", [
+                "AXIdentifier": "screen-mirroring-preferences",
+                "AXDescription": "button",
+                "AXTitle": "missing value",
+            ]),
+            axEl("AXStaticText", [
+                "AXIdentifier": "screen-mirroring-header",
+                "AXTitle": "Screen Mirroring",
+                "AXValue": "Screen Mirroring",
+            ]),
+        ]),
+    ])
+}
+
+private func deviceListTree() -> AXElement {
+    axEl("AXWindow", ["AXTitle": "Control Center", "AXSubrole": "AXSystemDialog"], [
+        axEl("AXGroup", [:], [
+            axEl("AXButton", [
+                "AXIdentifier": "screen-mirroring-preferences",
+                "AXDescription": "button",
+                "AXTitle": "missing value",
+            ]),
+            axEl("AXStaticText", [
+                "AXIdentifier": "screen-mirroring-header",
+                "AXTitle": "Screen Mirroring",
+                "AXValue": "Screen Mirroring",
+            ]),
+            axEl("AXScrollArea", [:], [
+                axEl("AXGroup", ["AXIdentifier": "screen-mirroring-device-list"], [
+                    axEl("AXHeading", [:]),
+                    axEl("AXCheckBox", [
+                        "AXSubrole": "AXToggle",
+                        "AXIdentifier": exampleTVRow,
+                        "AXDescription": "toggle button",
+                        "AXTitle": "missing value",
+                        "AXLabel": "",
+                        "AXHelp": "",
+                        "AXAttributedDescription": "",
+                        "AXValue": "0",
+                        "AXCustomContent": "",
+                    ], [
+                        axEl("AXStaticText", ["AXValue": "Example TV", "AXTitle": "missing value"]),
+                    ]),
+                    axEl("AXCheckBox", [
+                        "AXSubrole": "AXToggle",
+                        "AXIdentifier": exampleSpeakerRow,
+                        "AXDescription": "toggle button",
+                        "AXTitle": "missing value",
+                        "AXLabel": "Example Speaker",
+                        "AXHelp": "",
+                        "AXAttributedDescription": "",
+                        "AXValue": "1",
+                        "AXCustomContent": "",
+                    ]),
+                ]),
+            ]),
+        ]),
+    ])
+}
+
+private func rowOrderTree() -> AXElement {
+    axEl("AXGroup", ["AXIdentifier": "screen-mirroring-device-list"], [
+        axEl("AXStaticText", ["AXValue": "Example TV"]),
+        axEl("AXCheckBox", [
+            "AXIdentifier": exampleTVRow,
+            "AXDescription": "toggle button",
+            "AXTitle": "missing value",
+            "AXValue": "0",
+        ]),
+        axEl("AXStaticText", ["AXValue": "Example Speaker"]),
+        axEl("AXCheckBox", [
+            "AXIdentifier": exampleSpeakerRow,
+            "AXDescription": "toggle button",
+            "AXTitle": "missing value",
+            "AXValue": "1",
+        ]),
+    ])
+}
+
+private func unnamedTree() -> AXElement {
+    axEl("AXGroup", ["AXIdentifier": "screen-mirroring-device-list"], [
+        axEl("AXCheckBox", [
+            "AXIdentifier": exampleTVRow,
+            "AXDescription": "toggle button",
+            "AXTitle": "missing value",
+            "AXLabel": "",
+            "AXHelp": "",
+            "AXAttributedDescription": "",
+            "AXValue": "0",
+            "AXCustomContent": "",
+        ]),
+    ])
+}
+
+private func axEl(_ role: String, _ attributes: [String: String] = [:], _ children: [AXElement] = []) -> AXElement {
+    var stored = attributes
+    stored["AXRole"] = role
+    return AXElement(role: role, attributes: stored, children: children)
+}
+
+private final class QueueAX: ScreenMirroringReading, @unchecked Sendable {
+    private var items: [AXElement]
+    private var last: AXElement
+    private(set) var calls = 0
+
+    init(_ items: [AXElement]) {
+        self.items = items
+        self.last = items.last ?? AXElement(role: "AXWindow", attributes: [:], children: [])
+    }
+
+    func snapshot() async throws -> AXElement {
+        calls += 1
+        if items.isEmpty { return last }
+        let next = items.removeFirst()
+        last = next
+        return next
     }
 }
 

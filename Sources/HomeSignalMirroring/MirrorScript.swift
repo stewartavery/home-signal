@@ -83,6 +83,7 @@ public enum MirrorScript {
       if t is "checkbox" then return true
       if t is "check box" then return true
       if t is "missing" then return true
+      if t is "missing value" then return true
       return false
     end genericLabel
     """

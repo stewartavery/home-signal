@@ -86,6 +86,26 @@ public struct HomeSignalError: Error, Sendable, Equatable, Codable, CustomString
         )
     }
 
+    public static func deviceListTimeout(saw: [String]) -> HomeSignalError {
+        let list = saw.isEmpty ? "none" : saw.joined(separator: ", ")
+        return HomeSignalError(
+            code: "timeout",
+            message: "Screen Mirroring device list had no receiver row after 8 seconds. Saw: \(list).",
+            hint: "The receiver checkboxes appear under screen-mirroring-device-list after the module opens. Pass --debug-ax to print every attribute.",
+            exitCode: 7
+        )
+    }
+
+    public static func screenMirroringNamesUnreadable(rows: [String]) -> HomeSignalError {
+        let list = rows.isEmpty ? "none" : rows.joined(separator: "; ")
+        return HomeSignalError(
+            code: "backend",
+            message: "Screen Mirroring showed \(rows.count) receiver row\(rows.count == 1 ? "" : "s") but no name was exposed. \(list).",
+            hint: "The row identifier is an opaque id, not the receiver name. Pass --debug-ax to print AXTitle, AXLabel, AXHelp, AXValue, AXChildren, and AXCustomContent for each row.",
+            exitCode: 4
+        )
+    }
+
     public static func screenMirroringUnavailable(seen: [String], debug: String? = nil) -> HomeSignalError {
         let list = seen.isEmpty ? "none" : seen.joined(separator: ", ")
         var hint = "Screen Mirroring is opened from the Control Center menu bar item, then the Screen Mirroring module. Pass --debug-ax to dump the accessibility tree."

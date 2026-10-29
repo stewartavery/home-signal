@@ -540,10 +540,11 @@ struct MirrorCommand: AsyncParsableCommand {
         commandName: "mirror",
         abstract: "Connect, disconnect, or inspect an AirPlay target by name.",
         discussion: """
-        The agent reads Screen Mirroring through System Events. If Control Center has a top-level Screen Mirroring \
-        menu bar item, it opens that. Otherwise it opens Control Center, clicks the Screen Mirroring button or checkbox, \
-        and reads the route rows. Names are matched after Unicode normalization. A missing name lists the names that were read. \
-        Missing Accessibility or Automation exits 6. --debug-ax prints the accessibility tree. --discover on list also browses dns-sd. \
+        The agent reads Screen Mirroring through System Events and the accessibility API. If Control Center has a top-level Screen Mirroring \
+        menu bar item, it opens that. Otherwise it opens Control Center and clicks the Screen Mirroring module by identifier. \
+        It waits for checkboxes in the device list. Row identifiers are not receiver names. \
+        Names are matched after Unicode normalization. A missing name lists the names that were read. \
+        Missing Accessibility or Automation exits 6. --debug-ax prints every attribute on each row. --discover on list also browses dns-sd. \
         Window mode then clicks Choose Content, Window or App, and Mirror This Window using fractions from config. \
         --dry-run reads the route list and does not click the target.
         """,
